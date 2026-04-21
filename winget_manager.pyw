@@ -27,7 +27,7 @@ import signal
 try:
     import pystray
     from pystray import MenuItem as item
-    from PIL import Image, ImageDraw
+    from PIL import Image, ImageDraw, ImageTk
 except ImportError:
     # If modules are missing, we still try to show a basic Tkinter error box
     root = tk.Tk()
@@ -279,6 +279,13 @@ def run_logs_gui():
     root = tk.Tk()
     root.title("Winget Manager Logs")
     root.geometry("800x600")
+
+    try:
+        icon_photo = ImageTk.PhotoImage(create_image())
+        root.iconphoto(True, icon_photo)
+    except Exception:
+        pass
+
     root.eval('tk::PlaceWindow . center')
 
     btn_frame = ttk.Frame(root)
@@ -323,6 +330,12 @@ def run_settings_gui():
     root = tk.Tk()
     root.title("Winget Manager Settings")
     root.resizable(False, False)
+    
+    try:
+        icon_photo = ImageTk.PhotoImage(create_image())
+        root.iconphoto(True, icon_photo)
+    except Exception:
+        pass
     
     config = load_config()
     
