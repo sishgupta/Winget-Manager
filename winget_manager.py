@@ -1,12 +1,12 @@
 """
-Winget Auto Updater v2
+Winget Manager v2
 Runs in the system tray, automates 'winget upgrade --all', logs activity, and supports autostart.
 
 Prerequisites:
     pip install pystray Pillow
 
 Usage:
-    Save as winget_updater.pyw to run natively without a console, or just run normally 
+    Save as winget_manager.pyw to run natively without a console, or just run normally 
     and it will attempt to hide its own console.
 """
 
@@ -35,8 +35,8 @@ except ImportError:
 
 # --- Paths & Logging Setup ---
 USER_DIR = os.path.expanduser("~")
-CONFIG_FILE = os.path.join(USER_DIR, ".winget_updater_config.json")
-LOG_FILE = os.path.join(USER_DIR, ".winget_updater.log")
+CONFIG_FILE = os.path.join(USER_DIR, ".winget_manager_config.json")
+LOG_FILE = os.path.join(USER_DIR, ".winget_manager.log")
 
 logging.basicConfig(
     filename=LOG_FILE,
@@ -77,7 +77,7 @@ def save_config(config):
 
 # --- Autostart Management ---
 REG_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
-APP_NAME = "WingetAutoUpdater"
+APP_NAME = "WingetManager"
 
 def set_autostart(enable=True):
     """Enables or disables running the script on Windows startup."""
@@ -150,7 +150,7 @@ def notify_and_log(icon, message, title, level="info"):
         icon.notify(message, title)
 
 def run_winget_upgrade(icon=None):
-    notify_and_log(icon, "Starting background Winget upgrade...", "Winget Auto Updater")
+    notify_and_log(icon, "Starting background Winget upgrade...", "Winget Manager")
         
     try:
         startupinfo = subprocess.STARTUPINFO()
@@ -167,9 +167,9 @@ def run_winget_upgrade(icon=None):
         result = subprocess.run(cmd, capture_output=True, text=True, startupinfo=startupinfo)
         
         if "No applicable update found" in result.stdout or "No installed package found matching input criteria" in result.stdout:
-            notify_and_log(icon, "All packages are already up to date.", "Winget Auto Updater")
+            notify_and_log(icon, "All packages are already up to date.", "Winget Manager")
         else:
-            notify_and_log(icon, "Upgrade process finished successfully.", "Winget Auto Updater")
+            notify_and_log(icon, "Upgrade process finished successfully.", "Winget Manager")
             logging.info(f"Winget output: {result.stdout.strip()}")
             
         return True
@@ -239,7 +239,7 @@ def create_image():
 def run_logs_gui():
     """A Tkinter GUI to view the log file."""
     root = tk.Tk()
-    root.title("Winget Updater Logs")
+    root.title("Winget Manager Logs")
     root.geometry("600x400")
     root.eval('tk::PlaceWindow . center')
 
@@ -263,7 +263,7 @@ def run_logs_gui():
 def run_settings_gui():
     """Tkinter GUI for settings, including autostart."""
     root = tk.Tk()
-    root.title("Winget Updater Settings")
+    root.title("Winget Manager Settings")
     root.geometry("360x320")
     root.resizable(False, False)
     root.eval('tk::PlaceWindow . center')
@@ -352,7 +352,7 @@ def run_tray_app():
         item('Quit', on_quit)
     )
 
-    icon = pystray.Icon("Winget Updater", create_image(), "Winget Auto Updater", menu)
+    icon = pystray.Icon("Winget Manager", create_image(), "Winget Manager", menu)
     icon.run(setup=on_setup)
 
 if __name__ == '__main__':
