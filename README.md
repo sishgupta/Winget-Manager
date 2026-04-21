@@ -6,6 +6,63 @@ Gemini 3.1 Pro Vibe coded Winget manager
 
 ![Log Viewer](screenshots/Log%20Viewer.png)
 
+## Installation and Use
+1. Install Python
+2. Install Dependencies ```pip install pystray Pillow customtkinter requests packaging```
+3. Download and place winget_manager.pyw somewhere useful
+4. Double click to run or launch with pythonw
+5. Use system tray to configure via settings menu
+
+## V3 - Enhancements
+### Prompt:
+Recommend some potential enhancements without actually making them - this is just a discussion
+
+### Response:
+This is a great application to build upon! Since the core loop of trigger -> wait -> execute is very stable now, there are a lot of fun directions you could take it.
+
+Here are some potential enhancements just for brainstorming, ranging from easy quality-of-life tweaks to "power user" features:
+
+1. **Exclusion List (Blacklist):** Sometimes an update breaks a specific app, or you want to keep an older version of a tool. You could add a UI in Settings to manage a list of Package IDs to ignore (passing --exact --id "AppName" --version "old" or just managing an exclusion list before formulating the winget command).
+2. **Dry-Run / Preview:** Right now, it blindly updates everything. You could add an "Updates Available" tray menu item that parses the output of winget upgrade (without --all) to show the user exactly which apps have pending updates before they click "Upgrade Now".
+3. **Update Notifications:** Currently, you get system tray tooltips. You could integrate native Windows 10/11 Toast Notifications (using a fast library like win11toast) to pop up a message saying "Winget Manager: Successfully updated 3 packages" when the background worker finishes.
+4. **Dynamic Tray Icon State:** You could modify your create_image() function to draw different icons based on the app's state. For example: a blue "W" normally, an orange "W" with a little play button when an update is actively running, and a red "W" if the last update threw an error.
+5. **Clear Logs Button:** Your log file will eventually get quite long. Adding a simple "Clear Logs" button inside your Log UI to wipe the .winget_manager.log file would be handy.
+6. **Modernize Tkinter (customtkinter):** Standard tkinter looks a bit "Windows 95". If you ever wanted to make the settings and log windows look like native Windows 11 dark-mode apps with smooth rounded buttons, swapping tkinter for the customtkinter library is a surprisingly easy drop-in replacement.
+7. **Network & Battery Awareness:** For laptop users, doing heavy package installations on battery power isn't ideal. You could add a check using ctypes to skip the idle trigger if the laptop is discharging, or skip if the system isn't connected to the internet (preventing timeout errors in the log).
+8. **Self-Updater:** Since you have the code on GitHub, you could add an "Update Winget Manager" button that fetches the raw winget_manager.pyw from your repo and overwrites itself if a newer version is found.
+
+### Prompt:
+As suggested Please implement the following subset of items
+1. update notifications
+2. dynamic tray icon state
+3. clear logs button
+4. modernize tkinter
+5. network and battery awareness - also add options to settings
+6. self updater - with settings to enable/disable a frequency check, select a frequency and to either notify or auto update directly and restart
+
+### Response:
+What was implemented:
+1. **Update Notifications:** Integrated parsing logic for Winget. If it upgrades packages successfully, it reads how many were installed and you'll get a Windows notification (e.g., "Successfully updated 3 package(s)"). It uses the tray's native .notify behavior.
+2. **Dynamic Tray Icon State:** The tray icon changes color! Default Blue = monitoring, Orange = currently running upgrades, Red = error.
+3. **Clear Logs Button:** Easily accessible inside the Logs GUI (--logs flag), backed by error-catching.
+4. **Modernize Tkinter:** Shifted all GUIs (Settings, Logs, About) over to use customtkinter for a polished, dark/light-mode respecting modern feel.
+5. **Network and Battery Awareness:** Utilized ctypes.windll to detect if the laptop is plugged into the wall and socket to check network vitality. This effectively stops upgrades from draining your battery or timing out without internet. These defaults are toggleable in the settings ui!
+6. **Self-Updater Mechanism:** Reaches out to the GitHub repository file to detect if APP_VERSION is higher. Options were added for checking frequency and picking between purely notifying you vs auto-downloading, applying the code, and cleanly restarting the app behind the scenes.
+
+Prerequisites to test the new code:
+Be sure to install the new requirements in your terminal if you haven't recently locally:
+
+ ```pip install pystray Pillow customtkinter requests packaging```
+
+### Prompt:
+some fixes: the settings, about and log ui dont use the icon for the windows titlebar anymore. also the settings window is about twice as tall as it needs to be and definitely a bit too wide. finally, the auto update doesnt have a force update button or any kind of status on the last update or if there is an update. please add these things. is it possible to present the status of network and battery in their settings aswell?
+
+### Response:
+1. **Titlebar Icons Realized:** The customtkinter framework has a notorious quirk on Windows where pushing dynamic icons inside the module constructor drops them immediately (thanks to internal C garbage collection). I created a clever helper tool (set_tk_icon) that grabs the freshly painted tray image, anchors it into memory with an internal variable reference, and pushes it using Native Tk window bindings on a slight .after(200...) millisecond delay. This correctly bypasses the framework quirk, restoring the Winget Manager icon inside your Windows Titlebars without an external .ico file!
+2. **Settings Window Trimmed:** As requested, the "Settings" and "About" windows had explicit parameters dropped or recalculated (480x520 -> 460x420, etc.). The tabs will now correctly self-wrap their inner content rather than stretching.
+3. **Power/Network Status Injections:** Real-time statuses (e.g. Current Status: Plugged In, Current Status: Connected) are now anchored directly beneath your battery and internet toggles on that tab.
+4. **Interactive Auto-Update:** The "Updates" tab now boasts a dedicated "Check Now" button. Surrounding it are labels detailing exactly what occurred during the last check and displaying any status strings interactively. Pressing "Check Now" triggers the requests lookup, evaluates if a newer match exists, writes a log item, and prompts you to safely reboot into the newly pulled code!
+ 
 ## V2.1 - Fixing what AI can't See
 ### Filtering winget logging to remove winget status bar output:
 #### Prompt: 
