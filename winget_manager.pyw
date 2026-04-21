@@ -86,6 +86,11 @@ DEFAULT_CONFIG = {
 }
 
 def load_config():
+    """
+    Loads configuration from the JSON file.
+    If the file doesn't exist, it creates one with default settings.
+    It also fills in any missing keys with their default values to ensure compatibility with updates.
+    """
     if not os.path.exists(CONFIG_FILE):
         save_config(DEFAULT_CONFIG)
         return DEFAULT_CONFIG.copy()
@@ -101,6 +106,9 @@ def load_config():
         return DEFAULT_CONFIG.copy()
 
 def save_config(config):
+    """
+    Saves the provided configuration dictionary to the JSON file.
+    """
     try:
         with open(CONFIG_FILE, 'w') as f:
             json.dump(config, f, indent=4)
@@ -112,6 +120,10 @@ REG_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
 APP_NAME = "WingetManager"
 
 def set_autostart(enable=True):
+    """
+    Enables or disables autostart on Windows by modifying the CurrentUser Run registry key.
+    Points to pythonw.exe to ensure no console window flashes on boot.
+    """
     try:
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, REG_PATH, 0, winreg.KEY_ALL_ACCESS)
         if enable:
@@ -133,6 +145,9 @@ def set_autostart(enable=True):
         return False
 
 def get_autostart_status():
+    """
+    Checks the registry to see if the application is currently set to run on Windows startup.
+    """
     try:
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, REG_PATH, 0, winreg.KEY_READ)
         winreg.QueryValueEx(key, APP_NAME)
@@ -172,6 +187,11 @@ def is_network_connected():
     return False
 
 def hide_console():
+    """
+    Attempts to hide the terminal console window on Windows.
+    This is useful when the script is run directly via python.exe instead of pythonw.exe,
+    or during subprocess creation.
+    """
     if sys.platform == "win32":
         try:
             hwnd = ctypes.windll.kernel32.GetConsoleWindow()
@@ -181,6 +201,10 @@ def hide_console():
             logging.error(f"Could not hide console: {e}")
 
 def get_idle_time_seconds():
+    """
+    Calculates how long the user has been idle (no mouse or keyboard input).
+    Uses the Windows GetLastInputInfo API.
+    """
     class LASTINPUTINFO(ctypes.Structure):
         _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
     
@@ -193,6 +217,10 @@ def get_idle_time_seconds():
     return 0
 
 def notify_and_log(icon, message, title, level="info"):
+    """
+    Helper function to simultaneously write a message to the local .log file 
+    and push a system tray notification to the user.
+    """
     if level == "error":
         logging.error(message)
     else:
@@ -202,6 +230,11 @@ def notify_and_log(icon, message, title, level="info"):
         icon.notify(message, title)
 
 def run_winget_upgrade(icon=None):
+    """
+    Executes the 'winget upgrade --all' command silently.
+    Filters out the progress bar elements of stdout, counts successful installs,
+    and reports the results via the system tray.
+    """
     notify_and_log(icon, "Starting background Winget upgrade...", "Winget Manager")
         
     try:
@@ -239,6 +272,11 @@ def run_winget_upgrade(icon=None):
 
 # --- Self Updater ---
 def check_for_self_updates(icon, auto_apply):
+    """
+    Checks the GitHub repository for a newer version of winget_manager.pyw.
+    Supports checking the remote APP_VERSION string and safely comparing it with the local version.
+    Can either notify the user or auto-apply the update and restart the script.
+    """
     GITHUB_RAW_URL = "https://raw.githubusercontent.com/sishgupta/Winget-Manager/main/winget_manager.pyw"
     try:
         logging.info("Checking GitHub for self-updates...")
