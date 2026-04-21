@@ -47,6 +47,7 @@ except ImportError:
 USER_DIR = os.path.expanduser("~")
 CONFIG_FILE = os.path.join(USER_DIR, ".winget_manager_config.json")
 LOG_FILE = os.path.join(USER_DIR, ".winget_manager.log")
+PID_FILE = os.path.join(USER_DIR, ".winget_manager.pid")
 
 logging.basicConfig(
     filename=LOG_FILE,
@@ -284,16 +285,34 @@ def fetch_remote_update():
         logging.error(f"Failed to fetch remote update: {e}")
     return None, None
 
-def apply_update_and_restart(code):
-    """Writes the given script code to the local file and restarts the application via pythonw.exe."""
+def apply_update_and_restart(code, icon=None):
+    """Writes the given script code to the local file, kills existing tray apps, and restarts."""
     try:
         tmp_file = __file__ + ".tmp"
         with open(tmp_file, "w", encoding="utf-8") as f:
             f.write(code)
+            
+        # Try to taskkill the main tray app if it exists (and it's not us)
+        try:
+            if os.path.exists(PID_FILE):
+                with open(PID_FILE, 'r') as f:
+                    main_pid = int(f.read().strip())
+                if main_pid != os.getpid():
+                    subprocess.run(['taskkill', '/PID', str(main_pid), '/F'], capture_output=True)
+                os.remove(PID_FILE)
+        except Exception as e:
+            logging.error(f"Failed to kill main tray app during update: {e}")
+
         os.replace(tmp_file, __file__)
         
+        # Start new instance
         python_exe = sys.executable.replace("python.exe", "pythonw.exe")
         subprocess.Popen([python_exe, __file__])
+        
+        # Cleanly shut down current process
+        if icon:
+            icon.visible = False
+            icon.stop()
         os._exit(0)
     except Exception as e:
         logging.error(f"Failed to apply update: {e}")
@@ -311,7 +330,7 @@ def check_for_self_updates(icon, auto_apply):
         if version.parse(remote_version) > version.parse(APP_VERSION):
             if auto_apply:
                 notify_and_log(icon, f"Applying new update: v{remote_version}", "Self Updater")
-                apply_update_and_restart(code)
+                apply_update_and_restart(code, icon)
             else:
                 notify_and_log(icon, f"A new version (v{remote_version}) is available. Pull from GitHub to update.", "Update Available")
         else:
@@ -667,6 +686,13 @@ def run_about_gui():
 
 # --- Main App & Menu Routing ---
 def run_tray_app():
+    # Write PID for update routines to track the main process
+    try:
+        with open(PID_FILE, 'w') as f:
+            f.write(str(os.getpid()))
+    except Exception as e:
+        logging.error(f"Failed to write PID file: {e}")
+
     hide_console()
     logging.info("Starting System Tray Application...")
     worker = None
