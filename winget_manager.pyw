@@ -177,7 +177,9 @@ def run_winget_upgrade(icon=None):
             notify_and_log(icon, "All packages are already up to date.", "Winget Manager")
         else:
             notify_and_log(icon, "Upgrade process finished successfully.", "Winget Manager")
-            logging.info(f"Winget output: {result.stdout.strip()}")
+            filtered_lines = [line for line in result.stdout.strip().split('\n') if not line.startswith(' ')]
+            filtered_output = '\n'.join(filtered_lines)
+            logging.info(f"Winget output:\n{filtered_output}")
             
         return True
     except Exception as e:
@@ -281,10 +283,8 @@ def run_settings_gui():
     """A standalone Tkinter GUI for editing settings."""
     root = tk.Tk()
     root.title("Winget Manager Settings")
-    root.geometry("360x320")
     root.resizable(False, False)
-    root.eval('tk::PlaceWindow . center')
-
+    
     config = load_config()
     
     # Padding frame
@@ -330,10 +330,12 @@ def run_settings_gui():
             messagebox.showerror("Error", f"Failed to save settings:\n{e}")
 
     btn_frame = ttk.Frame(frame)
-    btn_frame.grid(row=7, column=0, columnspan=2, pady=20)
+    btn_frame.grid(row=7, column=0, columnspan=2, pady=(20, 0))
     ttk.Button(btn_frame, text="Save", command=save_and_close).pack(side=tk.LEFT, padx=5)
     ttk.Button(btn_frame, text="Cancel", command=root.destroy).pack(side=tk.LEFT, padx=5)
 
+    root.update_idletasks() # Ensure dimensions are fully calculated
+    root.eval('tk::PlaceWindow . center')
     root.mainloop()
 
 # --- Main App & Menu Routing ---
