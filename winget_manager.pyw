@@ -27,7 +27,7 @@ import webbrowser
 import socket
 import re
 
-APP_VERSION = "2026.04.21.03"
+APP_VERSION = "2026.04.21.04"
 
 try:
     import pystray
@@ -49,17 +49,37 @@ CONFIG_FILE = os.path.join(USER_DIR, ".winget_manager_config.json")
 LOG_FILE = os.path.join(USER_DIR, ".winget_manager.log")
 PID_FILE = os.path.join(USER_DIR, ".winget_manager.pid")
 
-logging.basicConfig(
-    filename=LOG_FILE,
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+class NoLockFileHandler(logging.Handler):
+    def __init__(self, filename):
+        super().__init__()
+        self.filename = filename
+        
+    def emit(self, record):
+        try:
+            with open(self.filename, 'a', encoding="utf-8") as f:
+                f.write(self.format(record) + '\n')
+        except Exception:
+            pass
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', '%Y-%m-%d %H:%M:%S')
+handler = NoLockFileHandler(LOG_FILE)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 is_graceful_exit = False
 
+def cleanup_pid():
+    try:
+        if os.path.exists(PID_FILE):
+            os.remove(PID_FILE)
+    except Exception:
+        pass
+
 def on_system_exit(*args):
     """Logs termination when the OS reboots or shuts down the background process."""
+    cleanup_pid()
     if not is_graceful_exit:
         logging.info("Application is shutting down or terminating (System exit/reboot).")
 
@@ -213,7 +233,7 @@ def get_idle_time_seconds():
     lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
     
     if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii)):
-        millis = ctypes.windll.kernel32.GetTickCount() - lii.dwTime
+        millis = (ctypes.windll.kernel32.GetTickCount() - lii.dwTime) & 0xFFFFFFFF
         return millis / 1000.0
     return 0
 
@@ -250,7 +270,7 @@ def run_winget_upgrade(icon=None):
             "--accept-source-agreements"
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, startupinfo=startupinfo)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', startupinfo=startupinfo)
         
         if "No applicable update found" in result.stdout or "No installed package found matching input criteria" in result.stdout:
             notify_and_log(icon, "All packages are already up to date.", "Winget Manager")
@@ -303,7 +323,13 @@ def apply_update_and_restart(code, icon=None):
         except Exception as e:
             logging.error(f"Failed to kill main tray app during update: {e}")
 
-        os.replace(tmp_file, __file__)
+        time.sleep(1.0) # Give Windows time to release the file lock
+        for _ in range(4):
+            try:
+                os.replace(tmp_file, __file__)
+                break
+            except Exception:
+                time.sleep(1.0)
         
         # Start new instance
         python_exe = sys.executable.replace("python.exe", "pythonw.exe")
@@ -443,8 +469,8 @@ def run_logs_gui():
     ctk.set_default_color_theme("blue")
     
     root = ctk.CTk()
+    root.withdraw()
     root.title("Winget Manager Logs")
-    root.geometry("800x600")
 
     set_tk_icon(root)
 
@@ -497,6 +523,13 @@ def run_logs_gui():
     text_area.configure(state='disabled')
     update_log()
 
+    root.update_idletasks()
+    w, h = 800, 600
+    x = (root.winfo_screenwidth() // 2) - (w // 2)
+    y = (root.winfo_screenheight() // 2) - (h // 2)
+    root.geometry(f"{w}x{h}+{x}+{y}")
+    root.deiconify()
+
     root.mainloop()
 
 def run_settings_gui():
@@ -505,6 +538,7 @@ def run_settings_gui():
     ctk.set_default_color_theme("blue")
 
     root = ctk.CTk()
+    root.withdraw()
     root.title("Winget Manager Settings")
     root.resizable(False, False)
     
@@ -623,6 +657,7 @@ def run_settings_gui():
     x = (root.winfo_screenwidth() // 2) - (w // 2)
     y = (root.winfo_screenheight() // 2) - (h // 2)
     root.geometry(f"{w}x{h}+{x}+{y}")
+    root.deiconify()
     root.mainloop()
 
 def run_about_gui():
@@ -631,6 +666,7 @@ def run_about_gui():
     ctk.set_default_color_theme("blue")
     
     root = ctk.CTk()
+    root.withdraw()
     root.title("About Winget Manager")
     root.resizable(False, False)
     
@@ -661,7 +697,7 @@ def run_about_gui():
 
     pillow_link = ctk.CTkLabel(frame, text="Pillow (Icon Generation)", text_color="#1E90FF", cursor="hand2")
     pillow_link.pack()
-    pillow_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://python-pillow.org/"))
+    pillow_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://python-pillow.github.io/"))
     
     ctk_link = ctk.CTkLabel(frame, text="CustomTkinter (Modern UI)", text_color="#1E90FF", cursor="hand2")
     ctk_link.pack()
@@ -682,6 +718,7 @@ def run_about_gui():
     x = (root.winfo_screenwidth() // 2) - (w // 2)
     y = (root.winfo_screenheight() // 2) - (h // 2)
     root.geometry(f"{w}x{h}+{x}+{y}")
+    root.deiconify()
     root.mainloop()
 
 # --- Main App & Menu Routing ---
@@ -713,6 +750,7 @@ def run_tray_app():
         logging.info("Application quit by user.")
         if worker:
             worker.running = False
+        cleanup_pid()
         icon.stop()
 
     def on_upgrade_now(icon, item):
