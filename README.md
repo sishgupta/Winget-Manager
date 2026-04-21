@@ -3,7 +3,7 @@ Gemini 3.1 Pro Vibe coded Winget manager
 
 
 ![Settings Menu](/screenshots/Settings Menu.png)
-![Log Viewer](/screenshots/Log Viewer.png)
+![Log Viewer](screenshots/Log Viewer.png)
 ![System Tray Menu](/screenshots/System Tray Menu.png)
 
 ## V2
