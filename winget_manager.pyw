@@ -27,7 +27,7 @@ import webbrowser
 import socket
 import re
 
-APP_VERSION = "2026.04.21.04"
+APP_VERSION = "2026.04.21.05"
 
 try:
     import pystray
@@ -79,7 +79,10 @@ def cleanup_pid():
 
 def on_system_exit(*args):
     """Logs termination when the OS reboots or shuts down the background process."""
-    cleanup_pid()
+    # Only clean up PID from the main tray process, not UI subprocesses
+    if not any(arg in sys.argv for arg in ['--settings', '--logs', '--about']):
+        cleanup_pid()
+        
     if not is_graceful_exit:
         logging.info("Application is shutting down or terminating (System exit/reboot).")
 
@@ -469,8 +472,13 @@ def run_logs_gui():
     ctk.set_default_color_theme("blue")
     
     root = ctk.CTk()
-    root.withdraw()
     root.title("Winget Manager Logs")
+    
+    # Pre-calculate center geometry to prevent window flashing in the corner
+    w, h = 800, 600
+    x = (root.winfo_screenwidth() // 2) - (w // 2)
+    y = (root.winfo_screenheight() // 2) - (h // 2)
+    root.geometry(f"{w}x{h}+{x}+{y}")
 
     set_tk_icon(root)
 
@@ -523,13 +531,6 @@ def run_logs_gui():
     text_area.configure(state='disabled')
     update_log()
 
-    root.update_idletasks()
-    w, h = 800, 600
-    x = (root.winfo_screenwidth() // 2) - (w // 2)
-    y = (root.winfo_screenheight() // 2) - (h // 2)
-    root.geometry(f"{w}x{h}+{x}+{y}")
-    root.deiconify()
-
     root.mainloop()
 
 def run_settings_gui():
@@ -538,9 +539,13 @@ def run_settings_gui():
     ctk.set_default_color_theme("blue")
 
     root = ctk.CTk()
-    root.withdraw()
     root.title("Winget Manager Settings")
     root.resizable(False, False)
+
+    w, h = 460, 420
+    x = (root.winfo_screenwidth() // 2) - (w // 2)
+    y = (root.winfo_screenheight() // 2) - (h // 2)
+    root.geometry(f"{w}x{h}+{x}+{y}")
     
     set_tk_icon(root)
     
@@ -651,13 +656,6 @@ def run_settings_gui():
     ctk.CTkButton(btn_frame, text="Save", command=save_and_close, width=100).pack(side="left", padx=10)
     ctk.CTkButton(btn_frame, text="Cancel", command=root.destroy, width=100, fg_color="gray").pack(side="left", padx=10)
 
-    # Center window
-    root.update_idletasks()
-    w, h = 460, 420
-    x = (root.winfo_screenwidth() // 2) - (w // 2)
-    y = (root.winfo_screenheight() // 2) - (h // 2)
-    root.geometry(f"{w}x{h}+{x}+{y}")
-    root.deiconify()
     root.mainloop()
 
 def run_about_gui():
@@ -666,9 +664,13 @@ def run_about_gui():
     ctk.set_default_color_theme("blue")
     
     root = ctk.CTk()
-    root.withdraw()
     root.title("About Winget Manager")
     root.resizable(False, False)
+    
+    w, h = 400, 550
+    x = (root.winfo_screenwidth() // 2) - (w // 2)
+    y = (root.winfo_screenheight() // 2) - (h // 2)
+    root.geometry(f"{w}x{h}+{x}+{y}")
     
     set_tk_icon(root)
 
@@ -713,12 +715,6 @@ def run_about_gui():
 
     ctk.CTkButton(frame, text="Close", command=root.destroy, width=120).pack(pady=(35, 0))
 
-    root.update_idletasks()
-    w, h = 400, 550
-    x = (root.winfo_screenwidth() // 2) - (w // 2)
-    y = (root.winfo_screenheight() // 2) - (h // 2)
-    root.geometry(f"{w}x{h}+{x}+{y}")
-    root.deiconify()
     root.mainloop()
 
 # --- Main App & Menu Routing ---
