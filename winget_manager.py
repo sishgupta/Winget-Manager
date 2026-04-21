@@ -6,7 +6,7 @@ Prerequisites:
     pip install pystray Pillow
 
 Usage:
-    Run `python winget_Manager.py` to start the tray application.
+    Run `python winget_manager.py` to start the tray application.
     Right-click the tray icon to access Settings, upgrade manually, or quit.
 """
 
