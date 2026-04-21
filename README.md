@@ -111,8 +111,8 @@ I have implemented all of your requested features in v2.
 4. **Autostart:** I went with the Registry-based approach (HKCU\Software\Microsoft\Windows\CurrentVersion\Run). While Task Scheduler is modern, creating and deleting scheduled tasks requires Administrator (UAC) elevation. Using the Current User registry key allows the script to toggle autostart seamlessly from the 5. Settings menu without constantly prompting you for Admin permissions, which is standard practice for system tray apps.
 
 #### Notes for V2:
-- **Recommended file extension:** You can rename this file to winget_updater.pyw. Windows natively treats .pyw files as "GUI/Windowless" scripts and will never flash a terminal when you click it. Even if you don't rename it, the code includes an API call to manually hide the window immediately upon launching.
-- **Logs are in:** C:\Users\<YourUsername>\.winget_updater.log.
+- **Recommended file extension:** You can rename this file to winget_manager.pyw. Windows natively treats .pyw files as "GUI/Windowless" scripts and will never flash a terminal when you click it. Even if you don't rename it, the code includes an API call to manually hide the window immediately upon launching.
+- **Logs are in:** C:\Users\<YourUsername>\.winget_manager.log.
 - **Testing Autostart:** Once you open the script, right-click the icon > Settings > Check "Run automatically on Windows start" and click Save. You can verify it applied correctly by checking the Startup Apps tab in your Windows Task Manager.
 
 ## V1 - Can it even be done?
