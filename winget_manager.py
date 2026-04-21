@@ -1,12 +1,12 @@
 """
-Winget Auto Updater
+Winget Auto Manager
 Runs in the system tray and automates 'winget upgrade --all'.
 
 Prerequisites:
     pip install pystray Pillow
 
 Usage:
-    Run `python winget_updater.py` to start the tray application.
+    Run `python winget_Manager.py` to start the tray application.
     Right-click the tray icon to access Settings, upgrade manually, or quit.
 """
 
@@ -30,7 +30,7 @@ except ImportError:
     sys.exit(1)
 
 # --- Configuration Management ---
-CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".winget_updater_config.json")
+CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".winget_Manager_config.json")
 
 DEFAULT_CONFIG = {
     "interval_days": 1,        # How often to check/upgrade
@@ -82,7 +82,7 @@ def get_idle_time_seconds():
 def run_winget_upgrade(icon=None):
     """Executes the winget upgrade command invisibly."""
     if icon:
-        icon.notify("Starting background upgrade...", "Winget Auto Updater")
+        icon.notify("Starting background upgrade...", "Winget Auto Manager")
         
     try:
         # Create StartupInfo to hide the console window completely
@@ -110,9 +110,9 @@ def run_winget_upgrade(icon=None):
         if icon:
             # Check if updates were actually installed or if none were found
             if "No applicable update found" in result.stdout or "No installed package found matching input criteria" in result.stdout:
-                icon.notify("All packages are already up to date.", "Winget Auto Updater")
+                icon.notify("All packages are already up to date.", "Winget Auto Manager")
             else:
-                icon.notify("Upgrade process finished.", "Winget Auto Updater")
+                icon.notify("Upgrade process finished.", "Winget Auto Manager")
                 
         return True
     except Exception as e:
@@ -219,14 +219,14 @@ def run_tray_app():
         item('Quit', on_quit)
     )
 
-    icon = pystray.Icon("Winget Updater", create_image(), "Winget Auto Updater", menu)
+    icon = pystray.Icon("Winget Manager", create_image(), "Winget Auto Manager", menu)
     icon.run(setup=on_setup)
 
 # --- Settings GUI ---
 def run_settings_gui():
     """A standalone Tkinter GUI for editing settings."""
     root = tk.Tk()
-    root.title("Winget Updater Settings")
+    root.title("Winget Manager Settings")
     root.geometry("340x260")
     root.resizable(False, False)
     
@@ -286,5 +286,5 @@ if __name__ == '__main__':
     else:
         # Prevent multiple instances of the tray app if needed (optional enhancement)
         # Run the standard background tray app
-        print("Starting Winget Auto Updater in the system tray...")
+        print("Starting Winget Auto Manager in the system tray...")
         run_tray_app()
