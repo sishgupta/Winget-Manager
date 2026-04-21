@@ -23,6 +23,7 @@ import logging
 import winreg
 import atexit
 import signal
+import webbrowser
 
 try:
     import pystray
@@ -262,16 +263,16 @@ class WorkerThread(threading.Thread):
         self.force_run = True
 
 # --- UI Functions ---
-def create_image():
+def create_image(size=64):
     # Generate icon dynamically so external .ico files aren't required
-    width = 64
-    height = 64
-    image = Image.new('RGBA', (width, height), color=(0, 0, 0, 0))
+    image = Image.new('RGBA', (size, size), color=(0, 0, 0, 0))
     dc = ImageDraw.Draw(image)
-     # Draw a blue rounded background
-    dc.rounded_rectangle((4, 4, 60, 60), radius=10, fill=(0, 120, 215))
+    
+    r = size / 64.0
+    # Draw a blue rounded background
+    dc.rounded_rectangle((4*r, 4*r, 60*r, 60*r), radius=10*r, fill=(0, 120, 215))
     # Draw a simple 'W'
-    dc.line([(16, 20), (26, 48), (32, 30), (38, 48), (48, 20)], fill="white", width=4, joint="curve")
+    dc.line([(16*r, 20*r), (26*r, 48*r), (32*r, 30*r), (38*r, 48*r), (48*r, 20*r)], fill="white", width=max(1, int(4*r)), joint="curve")
     return image
 
 def run_logs_gui():
@@ -390,6 +391,54 @@ def run_settings_gui():
     root.eval('tk::PlaceWindow . center')
     root.mainloop()
 
+def run_about_gui():
+    """A standalone Tkinter GUI to show the About box."""
+    root = tk.Tk()
+    root.title("About Winget Manager")
+    root.resizable(False, False)
+    
+    try:
+        icon_photo = ImageTk.PhotoImage(create_image())
+        root.iconphoto(True, icon_photo)
+    except Exception:
+        pass
+
+    frame = ttk.Frame(root, padding=30)
+    frame.pack(fill=tk.BOTH, expand=True)
+
+    try:
+        big_icon = ImageTk.PhotoImage(create_image(128))
+        icon_lbl = ttk.Label(frame, image=big_icon)
+        icon_lbl.image = big_icon  # keep object reference
+        icon_lbl.pack(pady=(0, 15))
+    except Exception:
+        pass
+
+    ttk.Label(frame, text="Winget Manager", font=("Segoe UI", 16, "bold")).pack()
+    ttk.Label(frame, text="Version: 2026.04.21.01").pack(pady=(0, 15))
+
+    repo_link = ttk.Label(frame, text="GitHub Repository", foreground="#0000EE", cursor="hand2")
+    repo_link.pack()
+    repo_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://github.com/sishgupta/Winget-Manager/"))
+
+    ttk.Separator(frame, orient='horizontal').pack(fill='x', pady=15)
+
+    ttk.Label(frame, text="Open Source Libraries Used:").pack(pady=(0, 5))
+    
+    pystray_link = ttk.Label(frame, text="pystray (System Tray Icon)", foreground="#0000EE", cursor="hand2")
+    pystray_link.pack()
+    pystray_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://github.com/moses-palmer/pystray"))
+
+    pillow_link = ttk.Label(frame, text="Pillow (Icon Generation)", foreground="#0000EE", cursor="hand2")
+    pillow_link.pack()
+    pillow_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://python-pillow.org/"))
+
+    ttk.Button(frame, text="Close", command=root.destroy).pack(pady=(25, 0))
+
+    root.update_idletasks()
+    root.eval('tk::PlaceWindow . center')
+    root.mainloop()
+
 # --- Main App & Menu Routing ---
 def run_tray_app():
     hide_console() # Attempt to hide the console right away
@@ -424,11 +473,16 @@ def run_tray_app():
         # complex threading conflicts between pystray and tkinter.
         subprocess.Popen([sys.executable, __file__, '--logs'])
 
+    def on_about(icon, item):
+        # We launch the about GUI in a separate process
+        subprocess.Popen([sys.executable, __file__, '--about'])
+
     menu = pystray.Menu(
         item('Upgrade Now', on_upgrade_now),
         pystray.Menu.SEPARATOR,
         item('Settings', on_settings),
         item('View Logs', on_view_logs),
+        item('About', on_about),
         pystray.Menu.SEPARATOR,
         item('Quit', on_quit)
     )
@@ -444,6 +498,9 @@ if __name__ == '__main__':
     elif '--logs' in sys.argv:
         hide_console()
         run_logs_gui()
+    elif '--about' in sys.argv:
+        hide_console()
+        run_about_gui()
     else:
         register_exit_hooks()
         run_tray_app()
