@@ -1,22 +1,19 @@
 # Winget-Manager
 Gemini 3.1 Pro Vibe coded Winget manager
 
-### Prompt:
+## Prompt:
 Create a Python application to control Winget. It needs to run in the system tray, check for updates in Winget, and then run upgrade all when the user configures an interval like 1 day or 1 week and after an action like user login or idle
 
 I will build a self-contained Python application that runs in your system tray to manage `winget` auto-updates. 
 
+## Response:
 To make the application robust and prevent GUI-related threading freezes, I have designed it using a multi-process approach within a single file. The main process handles the system tray and background checking, and when you click "Settings," it seamlessly spawns a secondary process to show the configuration dialog.
 
-### Prerequisites
+### Prerequisites:
 Before running the code, you will need to install the two lightweight dependencies used for the system tray icon and image generation. Open your terminal or command prompt and run:
 ```bash
 pip install pystray Pillow
 ```
-
-### The Code
-
-http://googleusercontent.com/immersive_entry_chip/0
 
 ### How It Works:
 1. **Background Loop:** When you launch the script, it creates a tray icon and spawns a daemon thread. This thread wakes up every minute to check if the timeframe has passed (e.g., 1 day or 7 days).
