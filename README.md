@@ -69,7 +69,27 @@ some fixes: the settings, about and log ui dont use the icon for the windows tit
 2. **Settings Window Trimmed:** As requested, the "Settings" and "About" windows had explicit parameters dropped or recalculated (480x520 -> 460x420, etc.). The tabs will now correctly self-wrap their inner content rather than stretching.
 3. **Power/Network Status Injections:** Real-time statuses (e.g. Current Status: Plugged In, Current Status: Connected) are now anchored directly beneath your battery and internet toggles on that tab.
 4. **Interactive Auto-Update:** The "Updates" tab now boasts a dedicated "Check Now" button. Surrounding it are labels detailing exactly what occurred during the last check and displaying any status strings interactively. Pressing "Check Now" triggers the requests lookup, evaluates if a newer match exists, writes a log item, and prompts you to safely reboot into the newly pulled code!
- 
+
+### Prompt:
+Does the about page need to be updated with the requests and packaging libraries? also you didnt bump the version number up - we should start doing that for each new iteration.
+
+### Response:
+Good call on the version bumping, that's completely my oversight! Bumping the APP_VERSION string is absolutely necessary now that the script parses it backwards and forwards to determine if an update needs to be applied.
+
+I've made the following changes:
+1. **Version Bump:** Incremented APP_VERSION from 2026.04.21.02 to 2026.04.21.03 inside the script. I'll make sure to automatically bump this during any future structural updates we do together.
+2. **About UI Credits Added:** Added the Requests (HTTP Library) and Packaging (Version Parsing) entries into the About page with clickable links directly to their respective documentation sites.
+3. **About UI Resized:** Since we added two more lines of text to that popup, I went ahead and dynamically bumped the hardcoded height value of the About UI back up slightly (480 -> 550) so it perfectly wraps the new credits without cutting them off!
+    
+### Prompt:
+I think the update and restart left me with two system tray icons running - both seemed to reflect the up to date code.
+
+### Response:
+Here is how the self-updater works now:
+1. **Process Tracking (PID):** When Winget Manager starts up, it now records its own Process ID (PID) into a hidden tracking file (.winget_manager.pid) in your user directory.
+2. **Targeted Assassination:** When an update is downloaded and ready to apply, the update function checks that PID file. Before it launches the new version, it explicitly calls the Windows taskkill /F command to forcefully terminate the original background process.
+3. **Graceful Icon Cleanup:** It also explicitly calls icon.stop() and icon.visible = False to ensure the Windows system tray API actually destroys the graphical icon buffer before wiping the process.
+    
 ## V2.1 - Fixing what AI can't See
 ### Filtering winget logging to remove winget status bar output:
 #### Prompt: 
