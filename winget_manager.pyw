@@ -288,13 +288,33 @@ def run_logs_gui():
     text_area = scrolledtext.ScrolledText(root, wrap=tk.WORD, font=("Consolas", 10))
     text_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 0))
 
-    try:
-        with open(LOG_FILE, 'r') as f:
-            text_area.insert(tk.INSERT, f.read())
-    except FileNotFoundError:
-        text_area.insert(tk.INSERT, "Log file is empty or does not exist yet.")
+    last_pos = 0
 
-    text_area.configure(state='disabled') # Read-only
+    def update_log():
+        nonlocal last_pos
+        try:
+            with open(LOG_FILE, 'r') as f:
+                f.seek(last_pos)
+                new_text = f.read()
+                if new_text:
+                    text_area.configure(state='normal')
+                    if last_pos == 0 and "does not exist yet" in text_area.get('1.0', tk.END):
+                        text_area.delete('1.0', tk.END)
+                    text_area.insert(tk.END, new_text)
+                    text_area.see(tk.END)
+                    text_area.configure(state='disabled')
+                last_pos = f.tell()
+        except FileNotFoundError:
+            if last_pos == 0 and "does not exist yet" not in text_area.get('1.0', tk.END):
+                text_area.configure(state='normal')
+                text_area.insert(tk.END, "Log file is empty or does not exist yet.")
+                text_area.configure(state='disabled')
+        
+        # Schedule the next check in 1000 ms (1 second)
+        root.after(1000, update_log)
+
+    text_area.configure(state='disabled') # Start read-only
+    update_log()
 
     root.mainloop()
 
