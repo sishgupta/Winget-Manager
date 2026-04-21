@@ -21,6 +21,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 import logging
 import winreg
+import atexit
+import signal
 
 try:
     import pystray
@@ -44,6 +46,20 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+
+def on_system_exit(*args):
+    """Logs termination when the OS reboots or shuts down the background process."""
+    logging.info("Application is shutting down or terminating (System exit/reboot).")
+
+atexit.register(on_system_exit)
+
+try:
+    signal.signal(signal.SIGTERM, on_system_exit)
+    signal.signal(signal.SIGINT, on_system_exit)
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, on_system_exit)
+except Exception:
+    pass
 
 # --- Configuration Management ---
 DEFAULT_CONFIG = {
@@ -235,7 +251,7 @@ class WorkerThread(threading.Thread):
             # Sleep for a minute before checking conditions again
             # Using small sleeps to allow quick thread termination if needed
             for _ in range(60):
-                if not self.running:
+                if not self.running or self.force_run:
                     break
                 time.sleep(1)
 
