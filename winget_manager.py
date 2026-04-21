@@ -155,9 +155,13 @@ def run_winget_upgrade(icon=None):
     notify_and_log(icon, "Starting background Winget upgrade...", "Winget Manager")
         
     try:
+        # Create StartupInfo to hide the console window completely
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        
+
+        # Build the command. 
+        # --silent tries to prevent package installer GUIs.
+        # --accept-package-agreements and --accept-source-agreements bypass prompts.
         cmd = [
             "winget", "upgrade", "--all", 
             "--include-unknown", 
@@ -167,7 +171,8 @@ def run_winget_upgrade(icon=None):
         ]
         
         result = subprocess.run(cmd, capture_output=True, text=True, startupinfo=startupinfo)
-        
+
+        # Check if updates were actually installed or if none were found
         if "No applicable update found" in result.stdout or "No installed package found matching input criteria" in result.stdout:
             notify_and_log(icon, "All packages are already up to date.", "Winget Manager")
         else:
@@ -197,18 +202,22 @@ class WorkerThread(threading.Thread):
             trigger = config['trigger']
             idle_minutes = config['idle_minutes']
 
+            # Has enough time passed since the last upgrade?
             time_for_update = (now - last_run) >= interval_seconds
             should_upgrade = False
 
             if self.force_run:
                 logging.info("User requested forced upgrade.")
                 should_upgrade = True
-                self.force_run = False 
+                self.force_run = False # Reset flag
             elif time_for_update:
                 if trigger == 'login':
+                    # 'login' means we run immediately once the interval is met
+                    # (Assuming the app is placed in the user's Startup folder)
                     logging.info("Interval met. Trigger: Login. Executing upgrade.")
                     should_upgrade = True
                 elif trigger == 'idle':
+                    # Wait until the user has been away from the keyboard
                     idle_time = get_idle_time_seconds()
                     if idle_time >= (idle_minutes * 60):
                         logging.info(f"Interval met. Trigger: Idle ({idle_minutes} min). Executing upgrade.")
@@ -217,9 +226,12 @@ class WorkerThread(threading.Thread):
             if should_upgrade:
                 success = run_winget_upgrade(self.icon)
                 if success:
+                    # Update the last_run timestamp upon success
                     config['last_run'] = time.time()
                     save_config(config)
 
+            # Sleep for a minute before checking conditions again
+            # Using small sleeps to allow quick thread termination if needed
             for _ in range(60):
                 if not self.running:
                     break
@@ -230,16 +242,19 @@ class WorkerThread(threading.Thread):
 
 # --- UI Functions ---
 def create_image():
+    # Generate icon dynamically so external .ico files aren't required
     width = 64
     height = 64
     image = Image.new('RGBA', (width, height), color=(0, 0, 0, 0))
     dc = ImageDraw.Draw(image)
+     # Draw a blue rounded background
     dc.rounded_rectangle((4, 4, 60, 60), radius=10, fill=(0, 120, 215))
+    # Draw a simple 'W'
     dc.line([(16, 20), (26, 48), (32, 30), (38, 48), (48, 20)], fill="white", width=4, joint="curve")
     return image
 
 def run_logs_gui():
-    """A Tkinter GUI to view the log file."""
+    """A standalone Tkinter GUI to view the log file."""
     root = tk.Tk()
     root.title("Winget Manager Logs")
     root.geometry("600x400")
@@ -263,7 +278,7 @@ def run_logs_gui():
     root.mainloop()
 
 def run_settings_gui():
-    """Tkinter GUI for settings, including autostart."""
+    """A standalone Tkinter GUI for editing settings."""
     root = tk.Tk()
     root.title("Winget Manager Settings")
     root.geometry("360x320")
@@ -271,25 +286,29 @@ def run_settings_gui():
     root.eval('tk::PlaceWindow . center')
 
     config = load_config()
-
+    
+    # Padding frame
     frame = ttk.Frame(root, padding=20)
     frame.pack(fill=tk.BOTH, expand=True)
 
     # --- Schedule Settings ---
+    # Interval setting
     ttk.Label(frame, text="Check Interval (Days):").grid(row=0, column=0, sticky=tk.W, pady=5)
     interval_var = tk.IntVar(value=config.get('interval_days', 1))
     ttk.Spinbox(frame, from_=1, to=365, textvariable=interval_var, width=10).grid(row=0, column=1, sticky=tk.W, pady=5)
-
+    
+    # Trigger setting
     ttk.Label(frame, text="Trigger upgrade upon:").grid(row=1, column=0, sticky=tk.W, pady=(15, 0))
     trigger_var = tk.StringVar(value=config.get('trigger', 'idle'))
     ttk.Radiobutton(frame, text="System Startup", variable=trigger_var, value="login").grid(row=2, column=0, columnspan=2, sticky=tk.W)
     ttk.Radiobutton(frame, text="System Idle", variable=trigger_var, value="idle").grid(row=3, column=0, columnspan=2, sticky=tk.W)
 
+    # Idle Time setting
     ttk.Label(frame, text="Idle time required (Minutes):").grid(row=4, column=0, sticky=tk.W, pady=(15, 5))
     idle_var = tk.IntVar(value=config.get('idle_minutes', 5))
     ttk.Spinbox(frame, from_=1, to=1440, textvariable=idle_var, width=10).grid(row=4, column=1, sticky=tk.W, pady=(15, 5))
 
-    # --- Autostart Setting ---
+    # Autostart Setting
     ttk.Separator(frame, orient='horizontal').grid(row=5, column=0, columnspan=2, sticky="ew", pady=15)
     
     autostart_var = tk.BooleanVar(value=get_autostart_status())
@@ -340,9 +359,13 @@ def run_tray_app():
             worker.trigger_force_run()
 
     def on_settings(icon, item):
+        # We launch the settings GUI in a separate process to avoid 
+        # complex threading conflicts between pystray and tkinter.
         subprocess.Popen([sys.executable, __file__, '--settings'])
 
     def on_view_logs(icon, item):
+        # We launch the logs GUI in a separate process to avoid 
+        # complex threading conflicts between pystray and tkinter.
         subprocess.Popen([sys.executable, __file__, '--logs'])
 
     menu = pystray.Menu(
