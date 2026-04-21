@@ -60,6 +60,7 @@ def load_config():
     try:
         with open(CONFIG_FILE, 'r') as f:
             config = json.load(f)
+            # Ensure all default keys exist in case of updates
             for key, value in DEFAULT_CONFIG.items():
                 if key not in config:
                     config[key] = value
@@ -135,6 +136,7 @@ def get_idle_time_seconds():
     lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
     
     if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii)):
+        # GetTickCount returns milliseconds since system start
         millis = ctypes.windll.kernel32.GetTickCount() - lii.dwTime
         return millis / 1000.0
     return 0
