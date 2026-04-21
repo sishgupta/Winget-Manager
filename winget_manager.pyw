@@ -259,11 +259,15 @@ def run_logs_gui():
     """A standalone Tkinter GUI to view the log file."""
     root = tk.Tk()
     root.title("Winget Manager Logs")
-    root.geometry("600x400")
+    root.geometry("800x600")
     root.eval('tk::PlaceWindow . center')
 
+    btn_frame = ttk.Frame(root)
+    btn_frame.pack(side=tk.BOTTOM, pady=10)
+    ttk.Button(btn_frame, text="Close", command=root.destroy).pack()
+
     text_area = scrolledtext.ScrolledText(root, wrap=tk.WORD, font=("Consolas", 10))
-    text_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+    text_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 0))
 
     try:
         with open(LOG_FILE, 'r') as f:
@@ -272,10 +276,6 @@ def run_logs_gui():
         text_area.insert(tk.INSERT, "Log file is empty or does not exist yet.")
 
     text_area.configure(state='disabled') # Read-only
-    
-    btn_frame = ttk.Frame(root)
-    btn_frame.pack(pady=10)
-    ttk.Button(btn_frame, text="Close", command=root.destroy).pack()
 
     root.mainloop()
 
