@@ -288,5 +288,3 @@ if __name__ == '__main__':
         # Run the standard background tray app
         print("Starting Winget Auto Updater in the system tray...")
         run_tray_app()
-
-```
