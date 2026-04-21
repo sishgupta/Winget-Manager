@@ -87,13 +87,31 @@ I replaced the single static file read with an update_log() function that gets r
 
 ### Vector Icon used Everywhere:
 #### Prompt: 
-the vector icon in the systray - can that also be used for the icon used by the gui and log ui? it's part of the windows ui in the title bar.
+The vector icon in the systray - can that also be used for the icon used by the gui and log ui? it's part of the windows ui in the title bar.
 
 #### Response: 
 I have updated both the Logs UI and Settings UI to use the dynamically generated "W" icon for their windows!
 
-I fetched the ImageTk module provided by the Pillow library and used root.iconphoto(True, ImageTk.PhotoImage(image)) to apply your existing create_image() asset so it correctly bridges into Tkinter's native titlebars/taskbar buttons without needing a physical .ico file on your device.
+I fetched the ImageTk module provided by the Pillow library and used ```root.iconphoto(True, ImageTk.PhotoImage(image))``` to apply your existing create_image() asset so it correctly bridges into Tkinter's native titlebars/taskbar buttons without needing a physical .ico file on your device.
 
+
+### Add an About Menu:
+#### Prompt: 
+I want to add an about box, that you can open from the systray menu.
+It should have a bigger version of the icon top and center.
+A version number that is just the date in yyyy.mm.dd.xx where xx is for multiple builds in a single day.
+It should link to the github repo https://github.com/sishgupta/Winget-Manager/
+it should credit and reference any libraries used with links to the libraries where appropriate.
+
+#### Response: 
+I have built out the new About dialog into the system tray!
+
+Here's a breakdown of the modifications made to support this cleanly:
+1. **Dynamic Vector Scaling:** I refactored your create_image() drawing utility to take an optional size parameter (with a default fallback of 64). I dynamically calculated a multiplier scale down the math constants (radius, bounding lines, coordinates) so it perfectly recreates your "W" icon natively at any resolution. The About Box uses a crisp 128x128 generated version centered at the top.
+2. **About Gui Integration:** I built run_about_gui(). Added the modern yyyy.mm.dd.xx timestamp marker (2026.04.21.01).
+3. **Python webbrowser Hooking:** Bound click events to native clickable links highlighting in blue with standard finger-cursor pointers for your requested github repo, as well as the repos for pystray and pillow.
+4. **App Routing Framework:** Linked the new subprocess (--about via sys.argv) and added it tightly into pystray.Menu just underneath "View Logs".
+    
 ## V2 - Adding in obvious things we missed.
 
 ### Prompt: 
