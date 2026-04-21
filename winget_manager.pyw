@@ -1,9 +1,9 @@
 """
-Winget Manager v2
+Winget Manager v3
 Runs in the system tray, automates 'winget upgrade --all', logs activity, and supports autostart.
 
 Prerequisites:
-    pip install pystray Pillow
+    pip install pystray Pillow customtkinter requests packaging
 
 Usage:
     Save as winget_manager.pyw to run natively without a console, or just run normally 
@@ -18,22 +18,29 @@ import threading
 import subprocess
 import ctypes
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import messagebox
 import logging
 import winreg
 import atexit
 import signal
 import webbrowser
+import socket
+import re
+
+APP_VERSION = "2026.04.21.02"
 
 try:
     import pystray
     from pystray import MenuItem as item
     from PIL import Image, ImageDraw, ImageTk
+    import customtkinter as ctk
+    import requests
+    from packaging import version
 except ImportError:
     # If modules are missing, we still try to show a basic Tkinter error box
     root = tk.Tk()
     root.withdraw()
-    tk.messagebox.showerror("Missing Libraries", "Required libraries not found.\nPlease run: pip install pystray Pillow")
+    tk.messagebox.showerror("Missing Libraries", "Required libraries not found.\nPlease run: pip install pystray Pillow customtkinter requests packaging")
     sys.exit(1)
 
 # --- Paths & Logging Setup ---
@@ -70,7 +77,12 @@ DEFAULT_CONFIG = {
     "interval_days": 1,
     "trigger": "idle",
     "idle_minutes": 5,
-    "last_run": 0
+    "last_run": 0,
+    "require_ac_power": False,
+    "require_network": True,
+    "updater_frequency_days": 7,
+    "updater_last_check": 0,
+    "updater_auto_restart": False
 }
 
 def load_config():
@@ -80,7 +92,6 @@ def load_config():
     try:
         with open(CONFIG_FILE, 'r') as f:
             config = json.load(f)
-            # Ensure all default keys exist in case of updates
             for key, value in DEFAULT_CONFIG.items():
                 if key not in config:
                     config[key] = value
@@ -101,14 +112,11 @@ REG_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
 APP_NAME = "WingetManager"
 
 def set_autostart(enable=True):
-    """Enables or disables running the script on Windows startup."""
     try:
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, REG_PATH, 0, winreg.KEY_ALL_ACCESS)
         if enable:
-            # Force usage of pythonw.exe to ensure no console is spawned on startup
             python_exe = sys.executable.replace("python.exe", "pythonw.exe")
             script_path = os.path.abspath(__file__)
-            # Quotes around paths to handle spaces
             cmd = f'"{python_exe}" "{script_path}"'
             winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, cmd)
             logging.info("Autostart enabled in registry.")
@@ -117,7 +125,7 @@ def set_autostart(enable=True):
                 winreg.DeleteValue(key, APP_NAME)
                 logging.info("Autostart disabled in registry.")
             except FileNotFoundError:
-                pass # Already disabled
+                pass
         winreg.CloseKey(key)
         return True
     except Exception as e:
@@ -125,7 +133,6 @@ def set_autostart(enable=True):
         return False
 
 def get_autostart_status():
-    """Checks if the app is set to run on startup."""
     try:
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, REG_PATH, 0, winreg.KEY_READ)
         winreg.QueryValueEx(key, APP_NAME)
@@ -138,13 +145,38 @@ def get_autostart_status():
         return False
 
 # --- System Utilities ---
+class SYSTEM_POWER_STATUS(ctypes.Structure):
+    _fields_ = [("ACLineStatus", ctypes.c_byte), 
+                ("BatteryFlag", ctypes.c_byte), 
+                ("BatteryLifePercent", ctypes.c_byte), 
+                ("SystemStatusFlag", ctypes.c_byte), 
+                ("BatteryLifeTime", ctypes.c_ulong), 
+                ("BatteryFullLifeTime", ctypes.c_ulong)]
+
+def is_on_ac_power():
+    """Returns True if the system is plugged into AC power or if unable to determine."""
+    if sys.platform != "win32":
+        return True
+    status = SYSTEM_POWER_STATUS()
+    if ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(status)):
+        return status.ACLineStatus != 0 # 0 means offline (battery)
+    return True
+
+def is_network_connected():
+    """Quick check for active internet connection using a DNS resolution attempt."""
+    try:
+        socket.create_connection(("8.8.8.8", 53), timeout=3)
+        return True
+    except OSError:
+        pass
+    return False
+
 def hide_console():
-    """Hides the console window if running directly from python.exe."""
     if sys.platform == "win32":
         try:
             hwnd = ctypes.windll.kernel32.GetConsoleWindow()
             if hwnd:
-                ctypes.windll.user32.ShowWindow(hwnd, 0) # 0 = SW_HIDE
+                ctypes.windll.user32.ShowWindow(hwnd, 0)
         except Exception as e:
             logging.error(f"Could not hide console: {e}")
 
@@ -156,13 +188,11 @@ def get_idle_time_seconds():
     lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
     
     if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii)):
-        # GetTickCount returns milliseconds since system start
         millis = ctypes.windll.kernel32.GetTickCount() - lii.dwTime
         return millis / 1000.0
     return 0
 
 def notify_and_log(icon, message, title, level="info"):
-    """Handles both system tray notifications and logging."""
     if level == "error":
         logging.error(message)
     else:
@@ -175,42 +205,73 @@ def run_winget_upgrade(icon=None):
     notify_and_log(icon, "Starting background Winget upgrade...", "Winget Manager")
         
     try:
-        # Create StartupInfo to hide the console window completely
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
-        # Build the command. 
-        # --silent tries to prevent package installer GUIs.
-        # --accept-package-agreements and --accept-source-agreements bypass prompts.
+        # Removed --silent to parse stdout correctly in case of real setups, but kept prompts auto-accepted
         cmd = [
             "winget", "upgrade", "--all", 
             "--include-unknown", 
             "--accept-package-agreements", 
-            "--accept-source-agreements", 
-            "--silent"
+            "--accept-source-agreements"
         ]
         
         result = subprocess.run(cmd, capture_output=True, text=True, startupinfo=startupinfo)
-
-        # Check if updates were actually installed or if none were found
+        
         if "No applicable update found" in result.stdout or "No installed package found matching input criteria" in result.stdout:
             notify_and_log(icon, "All packages are already up to date.", "Winget Manager")
         else:
-            notify_and_log(icon, "Upgrade process finished successfully.", "Winget Manager")
+            # Parse for actual upgrades
+            success_count = result.stdout.count("Successfully installed")
             filtered_lines = [line for line in result.stdout.strip().split('\n') if not line.startswith(' ')]
             filtered_output = '\n'.join(filtered_lines)
             logging.info(f"Winget output:\n{filtered_output}")
+            
+            if success_count > 0:
+                notify_and_log(icon, f"Upgrade finished! Successfully updated {success_count} package(s).", "Update Complete")
+            else:
+                notify_and_log(icon, "Upgrade process finished.", "Winget Manager")
             
         return True
     except Exception as e:
         notify_and_log(icon, f"Error running winget: {e}", "Winget Error", level="error")
         return False
 
+# --- Self Updater ---
+def check_for_self_updates(icon, auto_apply):
+    GITHUB_RAW_URL = "https://raw.githubusercontent.com/sishgupta/Winget-Manager/main/winget_manager.pyw"
+    try:
+        logging.info("Checking GitHub for self-updates...")
+        resp = requests.get(GITHUB_RAW_URL, timeout=10)
+        if resp.status_code == 200:
+            code = resp.text
+            match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', code)
+            if match:
+                remote_version = match.group(1)
+                if version.parse(remote_version) > version.parse(APP_VERSION):
+                    if auto_apply:
+                        notify_and_log(icon, f"Applying new update: v{remote_version}", "Self Updater")
+                        tmp_file = __file__ + ".tmp"
+                        with open(tmp_file, "w", encoding="utf-8") as f:
+                            f.write(code)
+                        os.replace(tmp_file, __file__)
+                        
+                        python_exe = sys.executable.replace("python.exe", "pythonw.exe")
+                        subprocess.Popen([python_exe, __file__])
+                        os._exit(0)
+                    else:
+                        notify_and_log(icon, f"A new version (v{remote_version}) is available. Pull from GitHub to update.", "Update Available")
+                else:
+                    logging.info("You are running the latest version.")
+    except Exception as e:
+        logging.error(f"Failed to check for updates: {e}")
+
 # --- Background Worker ---
 class WorkerThread(threading.Thread):
-    def __init__(self, icon):
+    def __init__(self, icon, update_icon_callback):
         super().__init__(daemon=True)
         self.icon = icon
+        self.update_icon_callback = update_icon_callback
         self.running = True
         self.force_run = False
 
@@ -234,26 +295,43 @@ class WorkerThread(threading.Thread):
                 self.force_run = False # Reset flag
             elif time_for_update:
                 if trigger == 'login':
-                    # 'login' means we run immediately once the interval is met
-                    # (Assuming the app is placed in the user's Startup folder)
                     logging.info("Interval met. Trigger: Login. Executing upgrade.")
                     should_upgrade = True
                 elif trigger == 'idle':
-                    # Wait until the user has been away from the keyboard
                     idle_time = get_idle_time_seconds()
                     if idle_time >= (idle_minutes * 60):
                         logging.info(f"Interval met. Trigger: Idle ({idle_minutes} min). Executing upgrade.")
                         should_upgrade = True
 
+            # Evaluate system readiness inhibitors
             if should_upgrade:
-                success = run_winget_upgrade(self.icon)
-                if success:
-                    # Update the last_run timestamp upon success
-                    config['last_run'] = time.time()
-                    save_config(config)
+                if config.get("require_ac_power", False) and not is_on_ac_power():
+                    logging.info("Upgrade postponed: System is currently on battery power.")
+                    should_upgrade = False
+                elif config.get("require_network", True) and not is_network_connected():
+                    logging.info("Upgrade postponed: System has no active internet connection.")
+                    should_upgrade = False
 
-            # Sleep for a minute before checking conditions again
-            # Using small sleeps to allow quick thread termination if needed
+            if should_upgrade:
+                self.update_icon_callback(state="running")
+                success = run_winget_upgrade(self.icon)
+                
+                if success:
+                    self.update_icon_callback(state="normal")
+                else:
+                    self.update_icon_callback(state="error")
+                    
+                config['last_run'] = time.time()
+                save_config(config)
+
+            # Check self-updater
+            updater_freq = config.get("updater_frequency_days", 7)
+            if updater_freq > 0 and (now - config.get("updater_last_check", 0)) > (updater_freq * 86400):
+                check_for_self_updates(self.icon, config.get("updater_auto_restart", False))
+                config = load_config() # Reload just in case
+                config['updater_last_check'] = time.time()
+                save_config(config)
+
             for _ in range(60):
                 if not self.running or self.force_run:
                     break
@@ -263,21 +341,28 @@ class WorkerThread(threading.Thread):
         self.force_run = True
 
 # --- UI Functions ---
-def create_image(size=64):
+def create_image(size=64, state="normal"):
     # Generate icon dynamically so external .ico files aren't required
     image = Image.new('RGBA', (size, size), color=(0, 0, 0, 0))
     dc = ImageDraw.Draw(image)
     
     r = size / 64.0
-    # Draw a blue rounded background
-    dc.rounded_rectangle((4*r, 4*r, 60*r, 60*r), radius=10*r, fill=(0, 120, 215))
-    # Draw a simple 'W'
+    color = (0, 120, 215) # Default Blue
+    if state == "running":
+        color = (255, 140, 0) # Orange
+    elif state == "error":
+        color = (220, 20, 60) # Red
+        
+    dc.rounded_rectangle((4*r, 4*r, 60*r, 60*r), radius=10*r, fill=color)
     dc.line([(16*r, 20*r), (26*r, 48*r), (32*r, 30*r), (38*r, 48*r), (48*r, 20*r)], fill="white", width=max(1, int(4*r)), joint="curve")
     return image
 
 def run_logs_gui():
-    """A standalone Tkinter GUI to view the log file."""
-    root = tk.Tk()
+    """A CustomTkinter GUI to view the log file."""
+    ctk.set_appearance_mode("System")
+    ctk.set_default_color_theme("blue")
+    
+    root = ctk.CTk()
     root.title("Winget Manager Logs")
     root.geometry("800x600")
 
@@ -287,48 +372,63 @@ def run_logs_gui():
     except Exception:
         pass
 
-    root.eval('tk::PlaceWindow . center')
-
-    btn_frame = ttk.Frame(root)
-    btn_frame.pack(side=tk.BOTTOM, pady=10)
-    ttk.Button(btn_frame, text="Close", command=root.destroy).pack()
-
-    text_area = scrolledtext.ScrolledText(root, wrap=tk.WORD, font=("Consolas", 10))
-    text_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 0))
+    btn_frame = ctk.CTkFrame(root, fg_color="transparent")
+    btn_frame.pack(side="bottom", pady=10)
+    
+    text_area = ctk.CTkTextbox(root, wrap="word", font=("Consolas", 12))
+    text_area.pack(fill="both", expand=True, padx=10, pady=(10, 0))
 
     last_pos = 0
 
     def update_log():
         nonlocal last_pos
+        current_text = text_area.get('1.0', "end")
         try:
             with open(LOG_FILE, 'r') as f:
                 f.seek(last_pos)
                 new_text = f.read()
                 if new_text:
                     text_area.configure(state='normal')
-                    if last_pos == 0 and "does not exist yet" in text_area.get('1.0', tk.END):
-                        text_area.delete('1.0', tk.END)
-                    text_area.insert(tk.END, new_text)
-                    text_area.see(tk.END)
+                    if last_pos == 0 and "does not exist yet" in current_text:
+                        text_area.delete('1.0', ctk.END)
+                    text_area.insert("end", new_text)
+                    text_area.see("end")
                     text_area.configure(state='disabled')
                 last_pos = f.tell()
         except FileNotFoundError:
-            if last_pos == 0 and "does not exist yet" not in text_area.get('1.0', tk.END):
+            if last_pos == 0 and "does not exist yet" not in current_text:
                 text_area.configure(state='normal')
-                text_area.insert(tk.END, "Log file is empty or does not exist yet.")
+                text_area.insert("end", "Log file is empty or does not exist yet.")
                 text_area.configure(state='disabled')
         
-        # Schedule the next check in 1000 ms (1 second)
         root.after(1000, update_log)
 
-    text_area.configure(state='disabled') # Start read-only
+    def clear_logs():
+        nonlocal last_pos
+        try:
+            open(LOG_FILE, 'w').close()
+            text_area.configure(state='normal')
+            text_area.delete('1.0', ctk.END)
+            text_area.insert("end", "Logs cleared.\n")
+            text_area.configure(state='disabled')
+            last_pos = 0
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to clear logs: {e}")
+
+    ctk.CTkButton(btn_frame, text="Clear Logs", command=clear_logs, fg_color="#8B0000", hover_color="#5C0000").pack(side="left", padx=10)
+    ctk.CTkButton(btn_frame, text="Close", command=root.destroy).pack(side="left", padx=10)
+
+    text_area.configure(state='disabled')
     update_log()
 
     root.mainloop()
 
 def run_settings_gui():
-    """A standalone Tkinter GUI for editing settings."""
-    root = tk.Tk()
+    """A CustomTkinter GUI for editing settings."""
+    ctk.set_appearance_mode("System")
+    ctk.set_default_color_theme("blue")
+
+    root = ctk.CTk()
     root.title("Winget Manager Settings")
     root.resizable(False, False)
     
@@ -339,61 +439,91 @@ def run_settings_gui():
         pass
     
     config = load_config()
+
+    tabview = ctk.CTkTabview(root, width=420, height=360)
+    tabview.pack(padx=20, pady=10, fill="both", expand=True)
+
+    tab_sched = tabview.add("Schedule")
+    tab_conds = tabview.add("Conditions")
+    tab_updt = tabview.add("Updates")
+
+    # --- Schedule Tab ---
+    ctk.CTkLabel(tab_sched, text="Check Interval (Days):").grid(row=0, column=0, sticky="w", pady=5)
+    interval_var = ctk.StringVar(value=str(config.get('interval_days', 1)))
+    ctk.CTkEntry(tab_sched, textvariable=interval_var, width=80).grid(row=0, column=1, sticky="w", pady=5, padx=10)
     
-    # Padding frame
-    frame = ttk.Frame(root, padding=20)
-    frame.pack(fill=tk.BOTH, expand=True)
+    ctk.CTkLabel(tab_sched, text="Trigger upgrade upon:").grid(row=1, column=0, sticky="w", pady=(15, 0))
+    trigger_var = ctk.StringVar(value=config.get('trigger', 'idle'))
+    ctk.CTkRadioButton(tab_sched, text="System Startup", variable=trigger_var, value="login").grid(row=2, column=0, columnspan=2, sticky="w", pady=(5, 5))
+    ctk.CTkRadioButton(tab_sched, text="System Idle", variable=trigger_var, value="idle").grid(row=3, column=0, columnspan=2, sticky="w", pady=(5, 5))
 
-    # --- Schedule Settings ---
-    # Interval setting
-    ttk.Label(frame, text="Check Interval (Days):").grid(row=0, column=0, sticky=tk.W, pady=5)
-    interval_var = tk.IntVar(value=config.get('interval_days', 1))
-    ttk.Spinbox(frame, from_=1, to=365, textvariable=interval_var, width=10).grid(row=0, column=1, sticky=tk.W, pady=5)
+    ctk.CTkLabel(tab_sched, text="Idle time required (Mins):").grid(row=4, column=0, sticky="w", pady=(15, 5))
+    idle_var = ctk.StringVar(value=str(config.get('idle_minutes', 5)))
+    ctk.CTkEntry(tab_sched, textvariable=idle_var, width=80).grid(row=4, column=1, sticky="w", pady=(15, 5), padx=10)
+
+    # --- Conditions Tab ---
+    ctk.CTkLabel(tab_conds, text="Upgrade Restrictions", font=ctk.CTkFont(weight="bold", size=14)).pack(anchor="w", pady=(5, 10))
     
-    # Trigger setting
-    ttk.Label(frame, text="Trigger upgrade upon:").grid(row=1, column=0, sticky=tk.W, pady=(15, 0))
-    trigger_var = tk.StringVar(value=config.get('trigger', 'idle'))
-    ttk.Radiobutton(frame, text="System Startup", variable=trigger_var, value="login").grid(row=2, column=0, columnspan=2, sticky=tk.W)
-    ttk.Radiobutton(frame, text="System Idle", variable=trigger_var, value="idle").grid(row=3, column=0, columnspan=2, sticky=tk.W)
+    ac_power_var = ctk.BooleanVar(value=config.get('require_ac_power', False))
+    ctk.CTkSwitch(tab_conds, text="Require AC Power (Do not upgrade on battery)", variable=ac_power_var).pack(anchor="w", pady=5)
 
-    # Idle Time setting
-    ttk.Label(frame, text="Idle time required (Minutes):").grid(row=4, column=0, sticky=tk.W, pady=(15, 5))
-    idle_var = tk.IntVar(value=config.get('idle_minutes', 5))
-    ttk.Spinbox(frame, from_=1, to=1440, textvariable=idle_var, width=10).grid(row=4, column=1, sticky=tk.W, pady=(15, 5))
-
-    # Autostart Setting
-    ttk.Separator(frame, orient='horizontal').grid(row=5, column=0, columnspan=2, sticky="ew", pady=15)
+    network_var = ctk.BooleanVar(value=config.get('require_network', True))
+    ctk.CTkSwitch(tab_conds, text="Require Network Connection (Prevents timeout errors)", variable=network_var).pack(anchor="w", pady=(5, 15))
     
-    autostart_var = tk.BooleanVar(value=get_autostart_status())
-    ttk.Checkbutton(frame, text="Run automatically on Windows start", variable=autostart_var).grid(row=6, column=0, columnspan=2, sticky=tk.W)
+    ctk.CTkLabel(tab_conds, text="System Boot", font=ctk.CTkFont(weight="bold", size=14)).pack(anchor="w", pady=(15, 10))
+    autostart_var = ctk.BooleanVar(value=get_autostart_status())
+    ctk.CTkSwitch(tab_conds, text="Run automatically on Windows start", variable=autostart_var).pack(anchor="w", pady=5)
 
+    # --- Updates Tab ---
+    ctk.CTkLabel(tab_updt, text="Winget Manager Updates", font=ctk.CTkFont(weight="bold", size=14)).pack(anchor="w", pady=(5, 10))
+    
+    ctk.CTkLabel(tab_updt, text="Check Frequency (Days, 0 to disable):").pack(anchor="w", pady=(5, 2))
+    updater_freq_var = ctk.StringVar(value=str(config.get('updater_frequency_days', 7)))
+    ctk.CTkEntry(tab_updt, textvariable=updater_freq_var, width=80).pack(anchor="w", pady=(0, 15))
+
+    updater_auto_var = ctk.BooleanVar(value=config.get('updater_auto_restart', False))
+    ctk.CTkSwitch(tab_updt, text="Auto-apply updates and restart (otherwise notify only)", variable=updater_auto_var).pack(anchor="w", pady=5)
+
+    # Save logic
     def save_and_close():
         try:
-            config['interval_days'] = interval_var.get()
+            config['interval_days'] = int(interval_var.get())
             config['trigger'] = trigger_var.get()
-            config['idle_minutes'] = idle_var.get()
+            config['idle_minutes'] = int(idle_var.get())
+            config['require_ac_power'] = ac_power_var.get()
+            config['require_network'] = network_var.get()
+            config['updater_frequency_days'] = int(updater_freq_var.get())
+            config['updater_auto_restart'] = updater_auto_var.get()
             save_config(config)
             
-            # Handle Autostart toggle
             set_autostart(autostart_var.get())
             
             messagebox.showinfo("Saved", "Settings saved successfully!\nCheck intervals will take effect immediately.")
             root.destroy()
+        except ValueError:
+            messagebox.showerror("Error", "Please enter valid numeric values for Interval and frequency fields.")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save settings:\n{e}")
 
-    btn_frame = ttk.Frame(frame)
-    btn_frame.grid(row=7, column=0, columnspan=2, pady=(20, 0))
-    ttk.Button(btn_frame, text="Save", command=save_and_close).pack(side=tk.LEFT, padx=5)
-    ttk.Button(btn_frame, text="Cancel", command=root.destroy).pack(side=tk.LEFT, padx=5)
+    btn_frame = ctk.CTkFrame(root, fg_color="transparent")
+    btn_frame.pack(pady=(0, 15))
+    ctk.CTkButton(btn_frame, text="Save", command=save_and_close, width=100).pack(side="left", padx=10)
+    ctk.CTkButton(btn_frame, text="Cancel", command=root.destroy, width=100, fg_color="gray").pack(side="left", padx=10)
 
-    root.update_idletasks() # Ensure dimensions are fully calculated
-    root.eval('tk::PlaceWindow . center')
+    # Center window
+    root.update_idletasks()
+    w, h = 480, 520
+    x = (root.winfo_screenwidth() // 2) - (w // 2)
+    y = (root.winfo_screenheight() // 2) - (h // 2)
+    root.geometry(f"{w}x{h}+{x}+{y}")
     root.mainloop()
 
 def run_about_gui():
-    """A standalone Tkinter GUI to show the About box."""
-    root = tk.Tk()
+    """A CustomTkinter GUI to show the About box."""
+    ctk.set_appearance_mode("System")
+    ctk.set_default_color_theme("blue")
+    
+    root = ctk.CTk()
     root.title("About Winget Manager")
     root.resizable(False, False)
     
@@ -403,52 +533,60 @@ def run_about_gui():
     except Exception:
         pass
 
-    frame = ttk.Frame(root, padding=30)
-    frame.pack(fill=tk.BOTH, expand=True)
+    frame = ctk.CTkFrame(root, fg_color="transparent")
+    frame.pack(fill="both", expand=True, padx=40, pady=30)
 
     try:
-        big_icon = ImageTk.PhotoImage(create_image(128))
-        icon_lbl = ttk.Label(frame, image=big_icon)
-        icon_lbl.image = big_icon  # keep object reference
+        big_icon = ctk.CTkImage(light_image=create_image(128), dark_image=create_image(128), size=(128, 128))
+        icon_lbl = ctk.CTkLabel(frame, image=big_icon, text="")
         icon_lbl.pack(pady=(0, 15))
     except Exception:
         pass
 
-    ttk.Label(frame, text="Winget Manager", font=("Segoe UI", 16, "bold")).pack()
-    ttk.Label(frame, text="Version: 2026.04.21.01").pack(pady=(0, 15))
+    ctk.CTkLabel(frame, text="Winget Manager", font=ctk.CTkFont(size=20, weight="bold")).pack()
+    ctk.CTkLabel(frame, text=f"Version: {APP_VERSION}", font=ctk.CTkFont(size=12)).pack(pady=(0, 15))
 
-    repo_link = ttk.Label(frame, text="GitHub Repository", foreground="#0000EE", cursor="hand2")
+    repo_link = ctk.CTkLabel(frame, text="GitHub Repository", text_color="#1E90FF", cursor="hand2")
     repo_link.pack()
     repo_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://github.com/sishgupta/Winget-Manager/"))
 
-    ttk.Separator(frame, orient='horizontal').pack(fill='x', pady=15)
-
-    ttk.Label(frame, text="Open Source Libraries Used:").pack(pady=(0, 5))
+    ctk.CTkLabel(frame, text="Open Source Libraries Used:", font=ctk.CTkFont(weight="bold")).pack(pady=(25, 5))
     
-    pystray_link = ttk.Label(frame, text="pystray (System Tray Icon)", foreground="#0000EE", cursor="hand2")
+    pystray_link = ctk.CTkLabel(frame, text="pystray (System Tray Icon)", text_color="#1E90FF", cursor="hand2")
     pystray_link.pack()
     pystray_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://github.com/moses-palmer/pystray"))
 
-    pillow_link = ttk.Label(frame, text="Pillow (Icon Generation)", foreground="#0000EE", cursor="hand2")
+    pillow_link = ctk.CTkLabel(frame, text="Pillow (Icon Generation)", text_color="#1E90FF", cursor="hand2")
     pillow_link.pack()
     pillow_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://python-pillow.org/"))
+    
+    ctk_link = ctk.CTkLabel(frame, text="CustomTkinter (Modern UI)", text_color="#1E90FF", cursor="hand2")
+    ctk_link.pack()
+    ctk_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://github.com/TomSchimansky/CustomTkinter"))
 
-    ttk.Button(frame, text="Close", command=root.destroy).pack(pady=(25, 0))
+    ctk.CTkButton(frame, text="Close", command=root.destroy, width=120).pack(pady=(35, 0))
 
     root.update_idletasks()
-    root.eval('tk::PlaceWindow . center')
+    w, h = 400, 520
+    x = (root.winfo_screenwidth() // 2) - (w // 2)
+    y = (root.winfo_screenheight() // 2) - (h // 2)
+    root.geometry(f"{w}x{h}+{x}+{y}")
     root.mainloop()
 
 # --- Main App & Menu Routing ---
 def run_tray_app():
-    hide_console() # Attempt to hide the console right away
+    hide_console()
     logging.info("Starting System Tray Application...")
     worker = None
 
     def on_setup(icon):
         nonlocal worker
         icon.visible = True
-        worker = WorkerThread(icon)
+        
+        def update_tray_icon(state):
+            icon.icon = create_image(size=64, state=state)
+            
+        worker = WorkerThread(icon, update_tray_icon)
         worker.start()
 
     def on_quit(icon, item):
@@ -464,18 +602,16 @@ def run_tray_app():
             worker.trigger_force_run()
 
     def on_settings(icon, item):
-        # We launch the settings GUI in a separate process to avoid 
-        # complex threading conflicts between pystray and tkinter.
-        subprocess.Popen([sys.executable, __file__, '--settings'])
+        python_exe = sys.executable.replace("python.exe", "pythonw.exe")
+        subprocess.Popen([python_exe, __file__, '--settings'])
 
     def on_view_logs(icon, item):
-        # We launch the logs GUI in a separate process to avoid 
-        # complex threading conflicts between pystray and tkinter.
-        subprocess.Popen([sys.executable, __file__, '--logs'])
+        python_exe = sys.executable.replace("python.exe", "pythonw.exe")
+        subprocess.Popen([python_exe, __file__, '--logs'])
 
     def on_about(icon, item):
-        # We launch the about GUI in a separate process
-        subprocess.Popen([sys.executable, __file__, '--about'])
+        python_exe = sys.executable.replace("python.exe", "pythonw.exe")
+        subprocess.Popen([python_exe, __file__, '--about'])
 
     menu = pystray.Menu(
         item('Upgrade Now', on_upgrade_now),
@@ -491,7 +627,6 @@ def run_tray_app():
     icon.run(setup=on_setup)
 
 if __name__ == '__main__':
-    # Route logic to avoid pystray and tkinter running in the same thread
     if '--settings' in sys.argv:
         hide_console()
         run_settings_gui()
