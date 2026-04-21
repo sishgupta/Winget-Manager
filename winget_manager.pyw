@@ -271,38 +271,51 @@ def run_winget_upgrade(icon=None):
         return False
 
 # --- Self Updater ---
+def fetch_remote_update():
+    """Fetches the latest file from GitHub and returns (remote_version_string, file_content_string)."""
+    GITHUB_RAW_URL = "https://raw.githubusercontent.com/sishgupta/Winget-Manager/main/winget_manager.pyw"
+    try:
+        resp = requests.get(GITHUB_RAW_URL, timeout=10)
+        if resp.status_code == 200:
+            match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', resp.text)
+            if match:
+                return match.group(1), resp.text
+    except Exception as e:
+        logging.error(f"Failed to fetch remote update: {e}")
+    return None, None
+
+def apply_update_and_restart(code):
+    """Writes the given script code to the local file and restarts the application via pythonw.exe."""
+    try:
+        tmp_file = __file__ + ".tmp"
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            f.write(code)
+        os.replace(tmp_file, __file__)
+        
+        python_exe = sys.executable.replace("python.exe", "pythonw.exe")
+        subprocess.Popen([python_exe, __file__])
+        os._exit(0)
+    except Exception as e:
+        logging.error(f"Failed to apply update: {e}")
+
 def check_for_self_updates(icon, auto_apply):
     """
     Checks the GitHub repository for a newer version of winget_manager.pyw.
     Supports checking the remote APP_VERSION string and safely comparing it with the local version.
     Can either notify the user or auto-apply the update and restart the script.
     """
-    GITHUB_RAW_URL = "https://raw.githubusercontent.com/sishgupta/Winget-Manager/main/winget_manager.pyw"
-    try:
-        logging.info("Checking GitHub for self-updates...")
-        resp = requests.get(GITHUB_RAW_URL, timeout=10)
-        if resp.status_code == 200:
-            code = resp.text
-            match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', code)
-            if match:
-                remote_version = match.group(1)
-                if version.parse(remote_version) > version.parse(APP_VERSION):
-                    if auto_apply:
-                        notify_and_log(icon, f"Applying new update: v{remote_version}", "Self Updater")
-                        tmp_file = __file__ + ".tmp"
-                        with open(tmp_file, "w", encoding="utf-8") as f:
-                            f.write(code)
-                        os.replace(tmp_file, __file__)
-                        
-                        python_exe = sys.executable.replace("python.exe", "pythonw.exe")
-                        subprocess.Popen([python_exe, __file__])
-                        os._exit(0)
-                    else:
-                        notify_and_log(icon, f"A new version (v{remote_version}) is available. Pull from GitHub to update.", "Update Available")
-                else:
-                    logging.info("You are running the latest version.")
-    except Exception as e:
-        logging.error(f"Failed to check for updates: {e}")
+    logging.info("Checking GitHub for self-updates...")
+    remote_version, code = fetch_remote_update()
+    
+    if remote_version:
+        if version.parse(remote_version) > version.parse(APP_VERSION):
+            if auto_apply:
+                notify_and_log(icon, f"Applying new update: v{remote_version}", "Self Updater")
+                apply_update_and_restart(code)
+            else:
+                notify_and_log(icon, f"A new version (v{remote_version}) is available. Pull from GitHub to update.", "Update Available")
+        else:
+            logging.info("You are running the latest version.")
 
 # --- Background Worker ---
 class WorkerThread(threading.Thread):
@@ -395,6 +408,16 @@ def create_image(size=64, state="normal"):
     dc.line([(16*r, 20*r), (26*r, 48*r), (32*r, 30*r), (38*r, 48*r), (48*r, 20*r)], fill="white", width=max(1, int(4*r)), joint="curve")
     return image
 
+def set_tk_icon(window):
+    """Sets the dynamic window icon and maintains a reference to prevent garbage collection."""
+    try:
+        window._icon_ref = ImageTk.PhotoImage(create_image(64, "normal"))
+        window.wm_iconphoto(False, window._icon_ref)
+        # CustomTkinter on Windows needs slight delays for the HWND to fully absorb icon injections
+        window.after(200, lambda: window.wm_iconphoto(False, window._icon_ref))
+    except Exception:
+        pass
+
 def run_logs_gui():
     """A CustomTkinter GUI to view the log file."""
     ctk.set_appearance_mode("System")
@@ -404,11 +427,7 @@ def run_logs_gui():
     root.title("Winget Manager Logs")
     root.geometry("800x600")
 
-    try:
-        icon_photo = ImageTk.PhotoImage(create_image())
-        root.iconphoto(True, icon_photo)
-    except Exception:
-        pass
+    set_tk_icon(root)
 
     btn_frame = ctk.CTkFrame(root, fg_color="transparent")
     btn_frame.pack(side="bottom", pady=10)
@@ -470,15 +489,11 @@ def run_settings_gui():
     root.title("Winget Manager Settings")
     root.resizable(False, False)
     
-    try:
-        icon_photo = ImageTk.PhotoImage(create_image())
-        root.iconphoto(True, icon_photo)
-    except Exception:
-        pass
+    set_tk_icon(root)
     
     config = load_config()
 
-    tabview = ctk.CTkTabview(root, width=420, height=360)
+    tabview = ctk.CTkTabview(root)
     tabview.pack(padx=20, pady=10, fill="both", expand=True)
 
     tab_sched = tabview.add("Schedule")
@@ -503,10 +518,14 @@ def run_settings_gui():
     ctk.CTkLabel(tab_conds, text="Upgrade Restrictions", font=ctk.CTkFont(weight="bold", size=14)).pack(anchor="w", pady=(5, 10))
     
     ac_power_var = ctk.BooleanVar(value=config.get('require_ac_power', False))
-    ctk.CTkSwitch(tab_conds, text="Require AC Power (Do not upgrade on battery)", variable=ac_power_var).pack(anchor="w", pady=5)
+    ctk.CTkSwitch(tab_conds, text="Require AC Power (Do not upgrade on battery)", variable=ac_power_var).pack(anchor="w", pady=(5, 2))
+    ac_stat = "Plugged In" if is_on_ac_power() else "On Battery"
+    ctk.CTkLabel(tab_conds, text=f"    Current Status: {ac_stat}", font=ctk.CTkFont(size=11), text_color="gray").pack(anchor="w", pady=(0, 10))
 
     network_var = ctk.BooleanVar(value=config.get('require_network', True))
-    ctk.CTkSwitch(tab_conds, text="Require Network Connection (Prevents timeout errors)", variable=network_var).pack(anchor="w", pady=(5, 15))
+    ctk.CTkSwitch(tab_conds, text="Require Network Connection (Prevents timeout errors)", variable=network_var).pack(anchor="w", pady=(5, 2))
+    net_stat = "Connected" if is_network_connected() else "Disconnected"
+    ctk.CTkLabel(tab_conds, text=f"    Current Status: {net_stat}", font=ctk.CTkFont(size=11), text_color="gray").pack(anchor="w", pady=(0, 15))
     
     ctk.CTkLabel(tab_conds, text="System Boot", font=ctk.CTkFont(weight="bold", size=14)).pack(anchor="w", pady=(15, 10))
     autostart_var = ctk.BooleanVar(value=get_autostart_status())
@@ -521,6 +540,37 @@ def run_settings_gui():
 
     updater_auto_var = ctk.BooleanVar(value=config.get('updater_auto_restart', False))
     ctk.CTkSwitch(tab_updt, text="Auto-apply updates and restart (otherwise notify only)", variable=updater_auto_var).pack(anchor="w", pady=5)
+
+    status_frame = ctk.CTkFrame(tab_updt, fg_color="transparent")
+    status_frame.pack(anchor="w", fill="x", pady=(15, 5))
+    
+    last_val = config.get('updater_last_check', 0)
+    last_str = time.strftime('%Y-%m-%d %H:%M', time.localtime(last_val)) if last_val else "Never"
+    status_lbl = ctk.CTkLabel(status_frame, text=f"Last Checked: {last_str}")
+    status_lbl.pack(side="left")
+
+    def force_update_check():
+        status_lbl.configure(text="Checking for updates...")
+        root.update()
+        remote_ver, code = fetch_remote_update()
+        
+        config['updater_last_check'] = time.time()
+        save_config(config)
+        last_str_new = time.strftime('%Y-%m-%d %H:%M', time.localtime(config['updater_last_check']))
+        
+        if remote_ver:
+            if version.parse(remote_ver) > version.parse(APP_VERSION):
+                status_lbl.configure(text=f"Last Check: {last_str_new} (Update Available!)")
+                if messagebox.askyesno("Update Available", f"Version {remote_ver} is available!\nDo you want to apply it now and restart?"):
+                    apply_update_and_restart(code)
+            else:
+                status_lbl.configure(text=f"Last Check: {last_str_new} (Up to date)")
+                messagebox.showinfo("Updater", "You are running the latest version.")
+        else:
+            status_lbl.configure(text=f"Last Check: {last_str_new} (Failed)")
+            messagebox.showerror("Updater", "Failed to contact GitHub.")
+
+    ctk.CTkButton(status_frame, text="Check Now", width=90, command=force_update_check).pack(side="right")
 
     # Save logic
     def save_and_close():
@@ -550,7 +600,7 @@ def run_settings_gui():
 
     # Center window
     root.update_idletasks()
-    w, h = 480, 520
+    w, h = 460, 420
     x = (root.winfo_screenwidth() // 2) - (w // 2)
     y = (root.winfo_screenheight() // 2) - (h // 2)
     root.geometry(f"{w}x{h}+{x}+{y}")
@@ -565,11 +615,7 @@ def run_about_gui():
     root.title("About Winget Manager")
     root.resizable(False, False)
     
-    try:
-        icon_photo = ImageTk.PhotoImage(create_image())
-        root.iconphoto(True, icon_photo)
-    except Exception:
-        pass
+    set_tk_icon(root)
 
     frame = ctk.CTkFrame(root, fg_color="transparent")
     frame.pack(fill="both", expand=True, padx=40, pady=30)
@@ -605,7 +651,7 @@ def run_about_gui():
     ctk.CTkButton(frame, text="Close", command=root.destroy, width=120).pack(pady=(35, 0))
 
     root.update_idletasks()
-    w, h = 400, 520
+    w, h = 400, 480
     x = (root.winfo_screenwidth() // 2) - (w // 2)
     y = (root.winfo_screenheight() // 2) - (h // 2)
     root.geometry(f"{w}x{h}+{x}+{y}")
