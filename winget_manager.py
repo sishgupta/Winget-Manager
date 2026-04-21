@@ -30,7 +30,7 @@ except ImportError:
     sys.exit(1)
 
 # --- Configuration Management ---
-CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".winget_Manager_config.json")
+CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".winget_manager_config.json")
 
 DEFAULT_CONFIG = {
     "interval_days": 1,        # How often to check/upgrade
