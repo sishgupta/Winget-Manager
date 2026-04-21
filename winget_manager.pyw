@@ -27,7 +27,7 @@ import webbrowser
 import socket
 import re
 
-APP_VERSION = "2026.04.21.02"
+APP_VERSION = "2026.04.21.03"
 
 try:
     import pystray
@@ -648,10 +648,18 @@ def run_about_gui():
     ctk_link.pack()
     ctk_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://github.com/TomSchimansky/CustomTkinter"))
 
+    req_link = ctk.CTkLabel(frame, text="Requests (HTTP Library)", text_color="#1E90FF", cursor="hand2")
+    req_link.pack()
+    req_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://requests.readthedocs.io/"))
+
+    pkg_link = ctk.CTkLabel(frame, text="Packaging (Version Parsing)", text_color="#1E90FF", cursor="hand2")
+    pkg_link.pack()
+    pkg_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://packaging.pypa.io/"))
+
     ctk.CTkButton(frame, text="Close", command=root.destroy, width=120).pack(pady=(35, 0))
 
     root.update_idletasks()
-    w, h = 400, 480
+    w, h = 400, 550
     x = (root.winfo_screenwidth() // 2) - (w // 2)
     y = (root.winfo_screenheight() // 2) - (h // 2)
     root.geometry(f"{w}x{h}+{x}+{y}")
