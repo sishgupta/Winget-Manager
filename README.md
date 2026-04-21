@@ -1,7 +1,9 @@
 # Winget-Manager
 Gemini 3.1 Pro Vibe coded Winget manager
 
-![System Tray Menu](screenshots/System%20Tray%20Menu.png) ![Settings Menu](screenshots/Settings%20Menu.png) 
+![About Dialog](screenshots/About%20Dialog.png) ![System Tray Menu](screenshots/System%20Tray%20Menu.png) ![Settings Menu](screenshots/Settings%20Dialog.png) 
+
+
 ![Log Viewer](screenshots/Log%20Viewer.png)
 
 ## V2.1 - Fixing what AI can't See
