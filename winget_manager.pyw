@@ -47,19 +47,22 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
+is_graceful_exit = False
+
 def on_system_exit(*args):
     """Logs termination when the OS reboots or shuts down the background process."""
-    logging.info("Application is shutting down or terminating (System exit/reboot).")
+    if not is_graceful_exit:
+        logging.info("Application is shutting down or terminating (System exit/reboot).")
 
-atexit.register(on_system_exit)
-
-try:
-    signal.signal(signal.SIGTERM, on_system_exit)
-    signal.signal(signal.SIGINT, on_system_exit)
-    if hasattr(signal, "SIGBREAK"):
-        signal.signal(signal.SIGBREAK, on_system_exit)
-except Exception:
-    pass
+def register_exit_hooks():
+    atexit.register(on_system_exit)
+    try:
+        signal.signal(signal.SIGTERM, on_system_exit)
+        signal.signal(signal.SIGINT, on_system_exit)
+        if hasattr(signal, "SIGBREAK"):
+            signal.signal(signal.SIGBREAK, on_system_exit)
+    except Exception:
+        pass
 
 # --- Configuration Management ---
 DEFAULT_CONFIG = {
@@ -367,6 +370,8 @@ def run_tray_app():
         worker.start()
 
     def on_quit(icon, item):
+        global is_graceful_exit
+        is_graceful_exit = True
         logging.info("Application quit by user.")
         if worker:
             worker.running = False
@@ -407,4 +412,5 @@ if __name__ == '__main__':
         hide_console()
         run_logs_gui()
     else:
+        register_exit_hooks()
         run_tray_app()
