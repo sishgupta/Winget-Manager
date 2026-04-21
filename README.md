@@ -27,14 +27,14 @@ Can you tell me what to change to make the log window wider by default? and tall
 Here are the specific lines that fix this in run_logs_gui():
 
 Adjusting the Window Size:
-```bash
+```python
 root.geometry("800x600") # Changed from 600x400
 ```
 
 Fixing the Pushed-Off Close Button:
 
 In Tkinter, widgets pushed to the screen earlier get display priority. If a large textbox appears, it eagerly claims space, so the Close button sometimes gets pushed below the bottom edge. By creating and anchoring the button frame before packing the ScrolledText widget, it gets properly docked to the bottom.
-```bash
+```python
 # Before
 text_area.pack(...)
 # ...
@@ -112,7 +112,7 @@ I have implemented all of your requested features in v2.
 
 #### Notes for V2:
 - **Recommended file extension:** You can rename this file to winget_manager.pyw. Windows natively treats .pyw files as "GUI/Windowless" scripts and will never flash a terminal when you click it. Even if you don't rename it, the code includes an API call to manually hide the window immediately upon launching.
-- **Logs are in:** C:\Users\<YourUsername>\.winget_manager.log.
+- **Logs are in:** ```C:\Users\<YourUsername>\.winget_manager.log.```
 - **Testing Autostart:** Once you open the script, right-click the icon > Settings > Check "Run automatically on Windows start" and click Save. You can verify it applied correctly by checking the Startup Apps tab in your Windows Task Manager.
 
 ## V1 - Can it even be done?
