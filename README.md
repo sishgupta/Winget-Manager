@@ -89,7 +89,19 @@ Here is how the self-updater works now:
 1. **Process Tracking (PID):** When Winget Manager starts up, it now records its own Process ID (PID) into a hidden tracking file (.winget_manager.pid) in your user directory.
 2. **Targeted Assassination:** When an update is downloaded and ready to apply, the update function checks that PID file. Before it launches the new version, it explicitly calls the Windows taskkill /F command to forcefully terminate the original background process.
 3. **Graceful Icon Cleanup:** It also explicitly calls icon.stop() and icon.visible = False to ensure the Windows system tray API actually destroys the graphical icon buffer before wiping the process.
-    
+
+### Prompt:
+Review the code for errors, inconsistencies, syntax improvements, optimizations, and uncaught exceptions
+
+### Response:
+Deep Structural Fixes
+- 🔓 The Active Log Lock Fix: I built a custom Python logging.Handler implementation (NoLockFileHandler). Rather than locking the .winget_manager.log file perpetually open while the background process sits in the memory array, this custom formatter explicitly opens, appends, and closes the file stream exclusively for the split-second it takes to write each individual message. This permanently fixes the "Clear Logs" GUI crashing or failing from permissions, because the background app is no longer exclusively hoarding the file lock!
+- ♻️ The 49.7 Uptime Rollover Fix: Windows GetTickCount() resets back to a mathematical integer sequence equal to 0 roughly every 49.7 days of continuous power. When that happened, the get_idle_time_seconds() calculation became mathematically impossible and could break the background loop. You now explicitly & 0xFFFFFFFF map the interval math on a 32-bit ceiling safely.
+- 🗑️ Orphaned Tracking File Fix: Exiting the app by right-clicking Quit runs the graceful exit function and officially executes os.remove(PID_FILE). No more orphaned .pid files cluttering up the directory.
+- ⏳ Update Sleep Retry Lock: taskkill is instantaneous, but releasing process file streams is marginally delayed. apply_update_and_restart now deliberately yields execution (time.sleep(1)) while looping the os.replace procedure up to 4 times giving the OS time to properly let go of the file descriptor.
+- ✨ UI Flash Smoothers: The ctk.CTk() root element natively paints in the top left corner. I implemented a strict root.withdraw() declaration before the GUI widgets are packed, and only execute root.deiconify() after the root.geometry() math algorithm properly calculates the vertical center of your monitor! No more top-left frame flickering when launching About, Settings, or Logs!
+- 🐛 Winget Subprocess Encoding Crash: Added the encoding='utf-8', errors='replace' flags to the subprocess.run routine executing winget. If winget outputs untranslatable unicode loading bar strings, your background app won't crash trying to parse them internally anymore!
+
 ## V2.1 - Fixing what AI can't See
 ### Filtering winget logging to remove winget status bar output:
 #### Prompt: 
