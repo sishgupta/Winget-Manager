@@ -122,6 +122,32 @@ In the run_tray_app() menu routing, on_settings, on_view_logs, and on_about all 
 Right now, the run_settings_gui() is very manual. You declare a Tkinter StringVar for the Interval, then a BooleanVar for AC Power, etc. When the user clicks "Save", a large try/except block manually pulls .get() from all 8 variables and assigns them sequentially into the config dictionary.
 - **Simplification:** We could store the Tkinter variables in a dictionary that uses the exact same keys as the JSON config (e.g., ui_vars['require_ac_power'] = ctk.BooleanVar(...)). The save_and_close() function could then just loop through the dictionary dynamically with a standardized for key, var in ui_vars.items(): config[key] = var.get().
 
+### Prompt:
+Update the fonts to the windows standard. 
+
+### Response:
+Right now, the UI font comes directly from the CustomTkinter library. To make apps look identical on Mac, Windows, and Linux, CustomTkinter actually embeds and uses "Roboto" (Google's official Android font) as its default typeface under the hood.
+In the few places where we explicitly wanted a different look (like the code-block styling in your Log Viewer), we manually hardcoded it to font=("Consolas", 12).
+
+If you want the app to feel like a truly native, modern Windows 10/Windows 11 application, the official Microsoft system font is "Segoe UI" (or "Segoe UI Variable" on Windows 11).
+For terminal, logs, or monospaced text, modern Windows uses "Consolas" or the newer "Cascadia Code" (the default in Windows Terminal).
+
+I performed a complete, targeted injection across all three user interfaces:
+- Every label, button, switch, entry box, and title now natively renders with Segoe UI.
+- Log Viewer explicitly continues forcing Consolas for raw text output alignment so spacing doesn't get weird visually for dates and characters.
+- Hyperlinks inside the About interface now perfectly mirror their font configurations as well.
+
+### Prompt:
+When one of the ui windows opens. even though the icon in the title bar is updated... on the taskbar it shows a generic python icon. can this be fixed with the vector also?
+
+### Response:
+By default, Windows groups all .py and .pyw spawned subprocesses under the global pythonw.exe cache, which forces the generic "Python Coil" icon into your taskbar no matter what custom image you set in the upper corner.
+
+I wrote an explicit call to the ctypes.windll.shell32 C-library inside Windows at the top of our create_base_window function:
+```ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("wingetmanager.gui.1")```
+
+This forces Windows to un-group the UI window from the Python binary and recognize it as its own distinct application, which permanently enables our dynamic vector generation icon to appear directly in the taskbar.
+
 ## V2.1 - Fixing what AI can't See
 ### Filtering winget logging to remove winget status bar output:
 #### Prompt: 
