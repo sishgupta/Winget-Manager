@@ -27,7 +27,7 @@ import webbrowser
 import socket
 import re
 
-APP_VERSION = "2026.04.21.05"
+APP_VERSION = "2026.04.22.06"
 
 try:
     import pystray
@@ -466,21 +466,27 @@ def set_tk_icon(window):
     except Exception:
         pass
 
-def run_logs_gui():
-    """A CustomTkinter GUI to view the log file."""
+def create_base_window(title, width, height, resizable=False):
+    """Creates and centers a CustomTkinter window."""
     ctk.set_appearance_mode("System")
     ctk.set_default_color_theme("blue")
-    
     root = ctk.CTk()
-    root.title("Winget Manager Logs")
-    
-    # Pre-calculate center geometry to prevent window flashing in the corner
-    w, h = 800, 600
-    x = (root.winfo_screenwidth() // 2) - (w // 2)
-    y = (root.winfo_screenheight() // 2) - (h // 2)
-    root.geometry(f"{w}x{h}+{x}+{y}")
-
+    root.title(title)
+    root.resizable(resizable, resizable)
+    x = (root.winfo_screenwidth() // 2) - (width // 2)
+    y = (root.winfo_screenheight() // 2) - (height // 2)
+    root.geometry(f"{width}x{height}+{x}+{y}")
     set_tk_icon(root)
+    return root
+
+def launch_gui_process(flag):
+    """Launches a GUI subprocess so the tray icon doesn't block."""
+    python_exe = sys.executable.replace("python.exe", "pythonw.exe")
+    subprocess.Popen([python_exe, __file__, flag])
+
+def run_logs_gui():
+    """A CustomTkinter GUI to view the log file."""
+    root = create_base_window("Winget Manager Logs", 800, 600, resizable=True)
 
     btn_frame = ctk.CTkFrame(root, fg_color="transparent")
     btn_frame.pack(side="bottom", pady=10)
@@ -535,20 +541,7 @@ def run_logs_gui():
 
 def run_settings_gui():
     """A CustomTkinter GUI for editing settings."""
-    ctk.set_appearance_mode("System")
-    ctk.set_default_color_theme("blue")
-
-    root = ctk.CTk()
-    root.title("Winget Manager Settings")
-    root.resizable(False, False)
-
-    w, h = 460, 420
-    x = (root.winfo_screenwidth() // 2) - (w // 2)
-    y = (root.winfo_screenheight() // 2) - (h // 2)
-    root.geometry(f"{w}x{h}+{x}+{y}")
-    
-    set_tk_icon(root)
-    
+    root = create_base_window("Winget Manager Settings", 460, 420)
     config = load_config()
 
     tabview = ctk.CTkTabview(root)
@@ -558,30 +551,36 @@ def run_settings_gui():
     tab_conds = tabview.add("Conditions")
     tab_updt = tabview.add("Updates")
 
+    # Dynamic UI Variables mapping using same keys as JSON
+    ui_vars = {
+        'interval_days': ctk.StringVar(value=str(config.get('interval_days', 1))),
+        'trigger': ctk.StringVar(value=config.get('trigger', 'idle')),
+        'idle_minutes': ctk.StringVar(value=str(config.get('idle_minutes', 5))),
+        'require_ac_power': ctk.BooleanVar(value=config.get('require_ac_power', False)),
+        'require_network': ctk.BooleanVar(value=config.get('require_network', True)),
+        'updater_frequency_days': ctk.StringVar(value=str(config.get('updater_frequency_days', 7))),
+        'updater_auto_restart': ctk.BooleanVar(value=config.get('updater_auto_restart', False))
+    }
+
     # --- Schedule Tab ---
     ctk.CTkLabel(tab_sched, text="Check Interval (Days):").grid(row=0, column=0, sticky="w", pady=5)
-    interval_var = ctk.StringVar(value=str(config.get('interval_days', 1)))
-    ctk.CTkEntry(tab_sched, textvariable=interval_var, width=80).grid(row=0, column=1, sticky="w", pady=5, padx=10)
+    ctk.CTkEntry(tab_sched, textvariable=ui_vars['interval_days'], width=80).grid(row=0, column=1, sticky="w", pady=5, padx=10)
     
     ctk.CTkLabel(tab_sched, text="Trigger upgrade upon:").grid(row=1, column=0, sticky="w", pady=(15, 0))
-    trigger_var = ctk.StringVar(value=config.get('trigger', 'idle'))
-    ctk.CTkRadioButton(tab_sched, text="System Startup", variable=trigger_var, value="login").grid(row=2, column=0, columnspan=2, sticky="w", pady=(5, 5))
-    ctk.CTkRadioButton(tab_sched, text="System Idle", variable=trigger_var, value="idle").grid(row=3, column=0, columnspan=2, sticky="w", pady=(5, 5))
+    ctk.CTkRadioButton(tab_sched, text="System Startup", variable=ui_vars['trigger'], value="login").grid(row=2, column=0, columnspan=2, sticky="w", pady=(5, 5))
+    ctk.CTkRadioButton(tab_sched, text="System Idle", variable=ui_vars['trigger'], value="idle").grid(row=3, column=0, columnspan=2, sticky="w", pady=(5, 5))
 
     ctk.CTkLabel(tab_sched, text="Idle time required (Mins):").grid(row=4, column=0, sticky="w", pady=(15, 5))
-    idle_var = ctk.StringVar(value=str(config.get('idle_minutes', 5)))
-    ctk.CTkEntry(tab_sched, textvariable=idle_var, width=80).grid(row=4, column=1, sticky="w", pady=(15, 5), padx=10)
+    ctk.CTkEntry(tab_sched, textvariable=ui_vars['idle_minutes'], width=80).grid(row=4, column=1, sticky="w", pady=(15, 5), padx=10)
 
     # --- Conditions Tab ---
     ctk.CTkLabel(tab_conds, text="Upgrade Restrictions", font=ctk.CTkFont(weight="bold", size=14)).pack(anchor="w", pady=(5, 10))
     
-    ac_power_var = ctk.BooleanVar(value=config.get('require_ac_power', False))
-    ctk.CTkSwitch(tab_conds, text="Require AC Power (Do not upgrade on battery)", variable=ac_power_var).pack(anchor="w", pady=(5, 2))
+    ctk.CTkSwitch(tab_conds, text="Require AC Power (Do not upgrade on battery)", variable=ui_vars['require_ac_power']).pack(anchor="w", pady=(5, 2))
     ac_stat = "Plugged In" if is_on_ac_power() else "On Battery"
     ctk.CTkLabel(tab_conds, text=f"    Current Status: {ac_stat}", font=ctk.CTkFont(size=11), text_color="gray").pack(anchor="w", pady=(0, 10))
 
-    network_var = ctk.BooleanVar(value=config.get('require_network', True))
-    ctk.CTkSwitch(tab_conds, text="Require Network Connection (Prevents timeout errors)", variable=network_var).pack(anchor="w", pady=(5, 2))
+    ctk.CTkSwitch(tab_conds, text="Require Network Connection (Prevents timeout errors)", variable=ui_vars['require_network']).pack(anchor="w", pady=(5, 2))
     net_stat = "Connected" if is_network_connected() else "Disconnected"
     ctk.CTkLabel(tab_conds, text=f"    Current Status: {net_stat}", font=ctk.CTkFont(size=11), text_color="gray").pack(anchor="w", pady=(0, 15))
     
@@ -593,11 +592,9 @@ def run_settings_gui():
     ctk.CTkLabel(tab_updt, text="Winget Manager Updates", font=ctk.CTkFont(weight="bold", size=14)).pack(anchor="w", pady=(5, 10))
     
     ctk.CTkLabel(tab_updt, text="Check Frequency (Days, 0 to disable):").pack(anchor="w", pady=(5, 2))
-    updater_freq_var = ctk.StringVar(value=str(config.get('updater_frequency_days', 7)))
-    ctk.CTkEntry(tab_updt, textvariable=updater_freq_var, width=80).pack(anchor="w", pady=(0, 15))
+    ctk.CTkEntry(tab_updt, textvariable=ui_vars['updater_frequency_days'], width=80).pack(anchor="w", pady=(0, 15))
 
-    updater_auto_var = ctk.BooleanVar(value=config.get('updater_auto_restart', False))
-    ctk.CTkSwitch(tab_updt, text="Auto-apply updates and restart (otherwise notify only)", variable=updater_auto_var).pack(anchor="w", pady=5)
+    ctk.CTkSwitch(tab_updt, text="Auto-apply updates and restart (otherwise notify only)", variable=ui_vars['updater_auto_restart']).pack(anchor="w", pady=5)
 
     status_frame = ctk.CTkFrame(tab_updt, fg_color="transparent")
     status_frame.pack(anchor="w", fill="x", pady=(15, 5))
@@ -630,16 +627,15 @@ def run_settings_gui():
 
     ctk.CTkButton(status_frame, text="Check Now", width=90, command=force_update_check).pack(side="right")
 
-    # Save logic
+    # Dynamic Save logic
     def save_and_close():
         try:
-            config['interval_days'] = int(interval_var.get())
-            config['trigger'] = trigger_var.get()
-            config['idle_minutes'] = int(idle_var.get())
-            config['require_ac_power'] = ac_power_var.get()
-            config['require_network'] = network_var.get()
-            config['updater_frequency_days'] = int(updater_freq_var.get())
-            config['updater_auto_restart'] = updater_auto_var.get()
+            for key, var in ui_vars.items():
+                val = var.get()
+                if key in ['interval_days', 'idle_minutes', 'updater_frequency_days']:
+                    config[key] = int(val)
+                else:
+                    config[key] = val
             save_config(config)
             
             set_autostart(autostart_var.get())
@@ -647,7 +643,7 @@ def run_settings_gui():
             messagebox.showinfo("Saved", "Settings saved successfully!\nCheck intervals will take effect immediately.")
             root.destroy()
         except ValueError:
-            messagebox.showerror("Error", "Please enter valid numeric values for Interval and frequency fields.")
+            messagebox.showerror("Error", "Please enter valid numeric values for numeric fields.")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save settings:\n{e}")
 
@@ -660,19 +656,7 @@ def run_settings_gui():
 
 def run_about_gui():
     """A CustomTkinter GUI to show the About box."""
-    ctk.set_appearance_mode("System")
-    ctk.set_default_color_theme("blue")
-    
-    root = ctk.CTk()
-    root.title("About Winget Manager")
-    root.resizable(False, False)
-    
-    w, h = 400, 550
-    x = (root.winfo_screenwidth() // 2) - (w // 2)
-    y = (root.winfo_screenheight() // 2) - (h // 2)
-    root.geometry(f"{w}x{h}+{x}+{y}")
-    
-    set_tk_icon(root)
+    root = create_base_window("About Winget Manager", 400, 550)
 
     frame = ctk.CTkFrame(root, fg_color="transparent")
     frame.pack(fill="both", expand=True, padx=40, pady=30)
@@ -753,24 +737,12 @@ def run_tray_app():
         if worker:
             worker.trigger_force_run()
 
-    def on_settings(icon, item):
-        python_exe = sys.executable.replace("python.exe", "pythonw.exe")
-        subprocess.Popen([python_exe, __file__, '--settings'])
-
-    def on_view_logs(icon, item):
-        python_exe = sys.executable.replace("python.exe", "pythonw.exe")
-        subprocess.Popen([python_exe, __file__, '--logs'])
-
-    def on_about(icon, item):
-        python_exe = sys.executable.replace("python.exe", "pythonw.exe")
-        subprocess.Popen([python_exe, __file__, '--about'])
-
     menu = pystray.Menu(
         item('Upgrade Now', on_upgrade_now),
         pystray.Menu.SEPARATOR,
-        item('Settings', on_settings),
-        item('View Logs', on_view_logs),
-        item('About', on_about),
+        item('Settings', lambda i, it: launch_gui_process('--settings')),
+        item('View Logs', lambda i, it: launch_gui_process('--logs')),
+        item('About', lambda i, it: launch_gui_process('--about')),
         pystray.Menu.SEPARATOR,
         item('Quit', on_quit)
     )
