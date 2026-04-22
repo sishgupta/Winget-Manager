@@ -27,7 +27,7 @@ import webbrowser
 import socket
 import re
 
-APP_VERSION = "2026.04.22.06"
+APP_VERSION = "2026.04.22.07"
 
 try:
     import pystray
@@ -468,6 +468,13 @@ def set_tk_icon(window):
 
 def create_base_window(title, width, height, resizable=False):
     """Creates and centers a CustomTkinter window."""
+    # Force Windows Taskbar to use our injected window icon instead of default Python logo
+    if sys.platform == "win32":
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("wingetmanager.gui.1")
+        except Exception:
+            pass
+
     ctk.set_appearance_mode("System")
     ctk.set_default_color_theme("blue")
     root = ctk.CTk()
@@ -531,8 +538,8 @@ def run_logs_gui():
         except Exception as e:
             messagebox.showerror("Error", f"Failed to clear logs: {e}")
 
-    ctk.CTkButton(btn_frame, text="Clear Logs", command=clear_logs, fg_color="#8B0000", hover_color="#5C0000").pack(side="left", padx=10)
-    ctk.CTkButton(btn_frame, text="Close", command=root.destroy).pack(side="left", padx=10)
+    ctk.CTkButton(btn_frame, text="Clear Logs", font=("Segoe UI", 12), command=clear_logs, fg_color="#8B0000", hover_color="#5C0000").pack(side="left", padx=10)
+    ctk.CTkButton(btn_frame, text="Close", font=("Segoe UI", 12), command=root.destroy).pack(side="left", padx=10)
 
     text_area.configure(state='disabled')
     update_log()
@@ -563,45 +570,49 @@ def run_settings_gui():
     }
 
     # --- Schedule Tab ---
-    ctk.CTkLabel(tab_sched, text="Check Interval (Days):").grid(row=0, column=0, sticky="w", pady=5)
-    ctk.CTkEntry(tab_sched, textvariable=ui_vars['interval_days'], width=80).grid(row=0, column=1, sticky="w", pady=5, padx=10)
-    
-    ctk.CTkLabel(tab_sched, text="Trigger upgrade upon:").grid(row=1, column=0, sticky="w", pady=(15, 0))
-    ctk.CTkRadioButton(tab_sched, text="System Startup", variable=ui_vars['trigger'], value="login").grid(row=2, column=0, columnspan=2, sticky="w", pady=(5, 5))
-    ctk.CTkRadioButton(tab_sched, text="System Idle", variable=ui_vars['trigger'], value="idle").grid(row=3, column=0, columnspan=2, sticky="w", pady=(5, 5))
+    fnt = ("Segoe UI", 12)
+    fnt_b = ("Segoe UI", 14, "bold")
+    fnt_s = ("Segoe UI", 11)
 
-    ctk.CTkLabel(tab_sched, text="Idle time required (Mins):").grid(row=4, column=0, sticky="w", pady=(15, 5))
-    ctk.CTkEntry(tab_sched, textvariable=ui_vars['idle_minutes'], width=80).grid(row=4, column=1, sticky="w", pady=(15, 5), padx=10)
+    ctk.CTkLabel(tab_sched, text="Check Interval (Days):", font=fnt).grid(row=0, column=0, sticky="w", pady=5)
+    ctk.CTkEntry(tab_sched, textvariable=ui_vars['interval_days'], width=80, font=fnt).grid(row=0, column=1, sticky="w", pady=5, padx=10)
+    
+    ctk.CTkLabel(tab_sched, text="Trigger upgrade upon:", font=fnt).grid(row=1, column=0, sticky="w", pady=(15, 0))
+    ctk.CTkRadioButton(tab_sched, text="System Startup", variable=ui_vars['trigger'], value="login", font=fnt).grid(row=2, column=0, columnspan=2, sticky="w", pady=(5, 5))
+    ctk.CTkRadioButton(tab_sched, text="System Idle", variable=ui_vars['trigger'], value="idle", font=fnt).grid(row=3, column=0, columnspan=2, sticky="w", pady=(5, 5))
+
+    ctk.CTkLabel(tab_sched, text="Idle time required (Mins):", font=fnt).grid(row=4, column=0, sticky="w", pady=(15, 5))
+    ctk.CTkEntry(tab_sched, textvariable=ui_vars['idle_minutes'], width=80, font=fnt).grid(row=4, column=1, sticky="w", pady=(15, 5), padx=10)
 
     # --- Conditions Tab ---
-    ctk.CTkLabel(tab_conds, text="Upgrade Restrictions", font=ctk.CTkFont(weight="bold", size=14)).pack(anchor="w", pady=(5, 10))
+    ctk.CTkLabel(tab_conds, text="Upgrade Restrictions", font=fnt_b).pack(anchor="w", pady=(5, 10))
     
-    ctk.CTkSwitch(tab_conds, text="Require AC Power (Do not upgrade on battery)", variable=ui_vars['require_ac_power']).pack(anchor="w", pady=(5, 2))
+    ctk.CTkSwitch(tab_conds, text="Require AC Power (Do not upgrade on battery)", variable=ui_vars['require_ac_power'], font=fnt).pack(anchor="w", pady=(5, 2))
     ac_stat = "Plugged In" if is_on_ac_power() else "On Battery"
-    ctk.CTkLabel(tab_conds, text=f"    Current Status: {ac_stat}", font=ctk.CTkFont(size=11), text_color="gray").pack(anchor="w", pady=(0, 10))
+    ctk.CTkLabel(tab_conds, text=f"    Current Status: {ac_stat}", font=fnt_s, text_color="gray").pack(anchor="w", pady=(0, 10))
 
-    ctk.CTkSwitch(tab_conds, text="Require Network Connection (Prevents timeout errors)", variable=ui_vars['require_network']).pack(anchor="w", pady=(5, 2))
+    ctk.CTkSwitch(tab_conds, text="Require Network Connection (Prevents timeout errors)", variable=ui_vars['require_network'], font=fnt).pack(anchor="w", pady=(5, 2))
     net_stat = "Connected" if is_network_connected() else "Disconnected"
-    ctk.CTkLabel(tab_conds, text=f"    Current Status: {net_stat}", font=ctk.CTkFont(size=11), text_color="gray").pack(anchor="w", pady=(0, 15))
+    ctk.CTkLabel(tab_conds, text=f"    Current Status: {net_stat}", font=fnt_s, text_color="gray").pack(anchor="w", pady=(0, 15))
     
-    ctk.CTkLabel(tab_conds, text="System Boot", font=ctk.CTkFont(weight="bold", size=14)).pack(anchor="w", pady=(15, 10))
+    ctk.CTkLabel(tab_conds, text="System Boot", font=fnt_b).pack(anchor="w", pady=(15, 10))
     autostart_var = ctk.BooleanVar(value=get_autostart_status())
-    ctk.CTkSwitch(tab_conds, text="Run automatically on Windows start", variable=autostart_var).pack(anchor="w", pady=5)
+    ctk.CTkSwitch(tab_conds, text="Run automatically on Windows start", variable=autostart_var, font=fnt).pack(anchor="w", pady=5)
 
     # --- Updates Tab ---
-    ctk.CTkLabel(tab_updt, text="Winget Manager Updates", font=ctk.CTkFont(weight="bold", size=14)).pack(anchor="w", pady=(5, 10))
+    ctk.CTkLabel(tab_updt, text="Winget Manager Updates", font=fnt_b).pack(anchor="w", pady=(5, 10))
     
-    ctk.CTkLabel(tab_updt, text="Check Frequency (Days, 0 to disable):").pack(anchor="w", pady=(5, 2))
-    ctk.CTkEntry(tab_updt, textvariable=ui_vars['updater_frequency_days'], width=80).pack(anchor="w", pady=(0, 15))
+    ctk.CTkLabel(tab_updt, text="Check Frequency (Days, 0 to disable):", font=fnt).pack(anchor="w", pady=(5, 2))
+    ctk.CTkEntry(tab_updt, textvariable=ui_vars['updater_frequency_days'], width=80, font=fnt).pack(anchor="w", pady=(0, 15))
 
-    ctk.CTkSwitch(tab_updt, text="Auto-apply updates and restart (otherwise notify only)", variable=ui_vars['updater_auto_restart']).pack(anchor="w", pady=5)
+    ctk.CTkSwitch(tab_updt, text="Auto-apply updates and restart (otherwise notify only)", variable=ui_vars['updater_auto_restart'], font=fnt).pack(anchor="w", pady=5)
 
     status_frame = ctk.CTkFrame(tab_updt, fg_color="transparent")
     status_frame.pack(anchor="w", fill="x", pady=(15, 5))
     
     last_val = config.get('updater_last_check', 0)
     last_str = time.strftime('%Y-%m-%d %H:%M', time.localtime(last_val)) if last_val else "Never"
-    status_lbl = ctk.CTkLabel(status_frame, text=f"Last Checked: {last_str}")
+    status_lbl = ctk.CTkLabel(status_frame, text=f"Last Checked: {last_str}", font=fnt)
     status_lbl.pack(side="left")
 
     def force_update_check():
@@ -625,7 +636,7 @@ def run_settings_gui():
             status_lbl.configure(text=f"Last Check: {last_str_new} (Failed)")
             messagebox.showerror("Updater", "Failed to contact GitHub.")
 
-    ctk.CTkButton(status_frame, text="Check Now", width=90, command=force_update_check).pack(side="right")
+    ctk.CTkButton(status_frame, text="Check Now", width=90, font=fnt, command=force_update_check).pack(side="right")
 
     # Dynamic Save logic
     def save_and_close():
@@ -649,8 +660,8 @@ def run_settings_gui():
 
     btn_frame = ctk.CTkFrame(root, fg_color="transparent")
     btn_frame.pack(pady=(0, 15))
-    ctk.CTkButton(btn_frame, text="Save", command=save_and_close, width=100).pack(side="left", padx=10)
-    ctk.CTkButton(btn_frame, text="Cancel", command=root.destroy, width=100, fg_color="gray").pack(side="left", padx=10)
+    ctk.CTkButton(btn_frame, text="Save", font=fnt, command=save_and_close, width=100).pack(side="left", padx=10)
+    ctk.CTkButton(btn_frame, text="Cancel", font=fnt, command=root.destroy, width=100, fg_color="gray").pack(side="left", padx=10)
 
     root.mainloop()
 
@@ -668,36 +679,41 @@ def run_about_gui():
     except Exception:
         pass
 
-    ctk.CTkLabel(frame, text="Winget Manager", font=ctk.CTkFont(size=20, weight="bold")).pack()
-    ctk.CTkLabel(frame, text=f"Version: {APP_VERSION}", font=ctk.CTkFont(size=12)).pack(pady=(0, 15))
+    fnt_title = ("Segoe UI", 20, "bold")
+    fnt = ("Segoe UI", 12)
+    fnt_b = ("Segoe UI", 12, "bold")
+    fnt_link = ("Segoe UI", 12, "underline")
 
-    repo_link = ctk.CTkLabel(frame, text="GitHub Repository", text_color="#1E90FF", cursor="hand2")
+    ctk.CTkLabel(frame, text="Winget Manager", font=fnt_title).pack()
+    ctk.CTkLabel(frame, text=f"Version: {APP_VERSION}", font=fnt).pack(pady=(0, 15))
+
+    repo_link = ctk.CTkLabel(frame, text="GitHub Repository", font=fnt_link, text_color="#1E90FF", cursor="hand2")
     repo_link.pack()
     repo_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://github.com/sishgupta/Winget-Manager/"))
 
-    ctk.CTkLabel(frame, text="Open Source Libraries Used:", font=ctk.CTkFont(weight="bold")).pack(pady=(25, 5))
+    ctk.CTkLabel(frame, text="Open Source Libraries Used:", font=fnt_b).pack(pady=(25, 5))
     
-    pystray_link = ctk.CTkLabel(frame, text="pystray (System Tray Icon)", text_color="#1E90FF", cursor="hand2")
+    pystray_link = ctk.CTkLabel(frame, text="pystray (System Tray Icon)", font=fnt_link, text_color="#1E90FF", cursor="hand2")
     pystray_link.pack()
     pystray_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://github.com/moses-palmer/pystray"))
 
-    pillow_link = ctk.CTkLabel(frame, text="Pillow (Icon Generation)", text_color="#1E90FF", cursor="hand2")
+    pillow_link = ctk.CTkLabel(frame, text="Pillow (Icon Generation)", font=fnt_link, text_color="#1E90FF", cursor="hand2")
     pillow_link.pack()
     pillow_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://python-pillow.github.io/"))
     
-    ctk_link = ctk.CTkLabel(frame, text="CustomTkinter (Modern UI)", text_color="#1E90FF", cursor="hand2")
+    ctk_link = ctk.CTkLabel(frame, text="CustomTkinter (Modern UI)", font=fnt_link, text_color="#1E90FF", cursor="hand2")
     ctk_link.pack()
     ctk_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://github.com/TomSchimansky/CustomTkinter"))
 
-    req_link = ctk.CTkLabel(frame, text="Requests (HTTP Library)", text_color="#1E90FF", cursor="hand2")
+    req_link = ctk.CTkLabel(frame, text="Requests (HTTP Library)", font=fnt_link, text_color="#1E90FF", cursor="hand2")
     req_link.pack()
     req_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://requests.readthedocs.io/"))
 
-    pkg_link = ctk.CTkLabel(frame, text="Packaging (Version Parsing)", text_color="#1E90FF", cursor="hand2")
+    pkg_link = ctk.CTkLabel(frame, text="Packaging (Version Parsing)", font=fnt_link, text_color="#1E90FF", cursor="hand2")
     pkg_link.pack()
     pkg_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://packaging.pypa.io/"))
 
-    ctk.CTkButton(frame, text="Close", command=root.destroy, width=120).pack(pady=(35, 0))
+    ctk.CTkButton(frame, text="Close", font=fnt, command=root.destroy, width=120).pack(pady=(35, 0))
 
     root.mainloop()
 
