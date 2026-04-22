@@ -27,7 +27,7 @@ import webbrowser
 import socket
 import re
 
-APP_VERSION = "2026.04.22.08"
+APP_VERSION = "2026.04.22.09"
 
 try:
     import pystray
@@ -626,6 +626,7 @@ def run_logs_gui():
         nonlocal last_pos
         try:
             open(LOG_FILE, 'w').close()
+            logging.info("Logs cleared by user via Log Viewer UI.")
             text_area.configure(state='normal')
             text_area.delete('1.0', ctk.END)
             text_area.insert("end", "Logs cleared.\n")
@@ -718,6 +719,7 @@ def run_settings_gui():
     status_lbl.pack(side="left")
 
     def force_update_check():
+        logging.info("Manual check for self-updates requested via Settings UI.")
         status_lbl.configure(text="Checking for updates...")
         root.update()
         remote_ver, code = fetch_remote_update()
@@ -727,14 +729,18 @@ def run_settings_gui():
         last_str_new = time.strftime('%Y-%m-%d %H:%M', time.localtime(config['updater_last_check']))
         
         if remote_ver:
+            logging.info(f"Manual self-update check complete. Remote version: {remote_ver}. Local version: {APP_VERSION}")
             if version.parse(remote_ver) > version.parse(APP_VERSION):
                 status_lbl.configure(text=f"Last Check: {last_str_new} (Update Available!)")
                 if messagebox.askyesno("Update Available", f"Version {remote_ver} is available!\nDo you want to apply it now and restart?"):
+                    logging.info(f"User chose to apply update to {remote_ver} from Settings UI.")
                     apply_update_and_restart(code)
             else:
+                logging.info("No self-updates available. System is already up to date.")
                 status_lbl.configure(text=f"Last Check: {last_str_new} (Up to date)")
                 messagebox.showinfo("Updater", "You are running the latest version.")
         else:
+            logging.warning("Manual self-update check failed: Could not retrieve version from GitHub.")
             status_lbl.configure(text=f"Last Check: {last_str_new} (Failed)")
             messagebox.showerror("Updater", "Failed to contact GitHub.")
 
@@ -753,6 +759,7 @@ def run_settings_gui():
             
             set_autostart(autostart_var.get())
             
+            logging.info("Settings saved by user via Settings UI.")
             messagebox.showinfo("Saved", "Settings saved successfully!\nCheck intervals will take effect immediately.")
             root.destroy()
         except ValueError:
