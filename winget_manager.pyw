@@ -27,7 +27,7 @@ import webbrowser
 import socket
 import re
 
-APP_VERSION = "2026.04.22.01"
+APP_VERSION = "2026.04.22.02"
 
 try:
     import pystray
@@ -717,11 +717,19 @@ def run_about_gui():
     fnt_link = ("Segoe UI", 12, "underline")
 
     ctk.CTkLabel(frame, text="Winget Manager", font=fnt_title).pack()
-    ctk.CTkLabel(frame, text=f"Version: {APP_VERSION}", font=fnt).pack(pady=(0, 15))
+    ctk.CTkLabel(frame, text=f"Version: {APP_VERSION}", font=fnt).pack(pady=(0, 5))
+    
+    author_link = ctk.CTkLabel(frame, text="© 2026 @sishgupta", font=fnt_link, text_color="gray", cursor="hand2")
+    author_link.pack(pady=(0, 15))
+    author_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://github.com/sishgupta"))
 
     repo_link = ctk.CTkLabel(frame, text="GitHub Repository", font=fnt_link, text_color="#1E90FF", cursor="hand2")
     repo_link.pack()
     repo_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://github.com/sishgupta/Winget-Manager/"))
+
+    license_link = ctk.CTkLabel(frame, text="License: GNU GPLv3", font=fnt_link, text_color="#1E90FF", cursor="hand2")
+    license_link.pack(pady=(5, 0))
+    license_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://www.gnu.org/licenses/gpl-3.0.html"))
 
     ctk.CTkLabel(frame, text="Open Source Libraries Used:", font=fnt_b).pack(pady=(25, 5))
     
