@@ -14,14 +14,14 @@ If you are licensing this script as open-source under the GNU GPLv3, you are in 
 It's actually highly recommended to explicitly state your specific license in the UI for open source projects so that anyone downloading or forking it knows exactly where they stand without digging through GitHub files.
 
 ### Prompt:
-ok and what about a copyright? should we build something and put that in or is the GPLV3 gonna cover that?
+OK and what about a copyright? should we build something and put that in or is the GPLV3 gonna cover that?
 can you use my github account name and then link to that? do github accounts have any special formatting? make it obvious it's a github handle.
 
 ### Response:
 Perfect! Using the GitHub prefix format is exactly how the open-source community handles pseudonymous copyright.
 
 ### Prompt:
-if windows shuts down, it closes the app - but i dont see any termination message in the log.
+If windows shuts down, it closes the app - but i dont see any termination message in the log.
 
 I do see the user exit log when selected from the menu.
 
@@ -71,7 +71,7 @@ If we add these new "State Change" triggers, it might make a lot more sense to c
 If any one of those events happens, and it's been more than 24 hours (or whatever your interval is), it launches the Winget update payload.
 
 ### Prompt:
-double clicking the icon should "upgrade now"
+Double clicking the icon should "upgrade now"
 
 ### Reponse:
 This is actually incredibly easy to do thanks to how pystray handles menus under the hood!
