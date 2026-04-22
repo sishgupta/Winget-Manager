@@ -85,6 +85,7 @@ def on_system_exit(*args):
         
     if not is_graceful_exit:
         logging.info("Application is shutting down or terminating (System exit/reboot).")
+        logging.shutdown()
 
 def register_exit_hooks():
     atexit.register(on_system_exit)
@@ -93,6 +94,25 @@ def register_exit_hooks():
         signal.signal(signal.SIGINT, on_system_exit)
         if hasattr(signal, "SIGBREAK"):
             signal.signal(signal.SIGBREAK, on_system_exit)
+    except Exception:
+        pass
+
+    # Microsoft allows SetConsoleCtrlHandler to catch LOGOFF/SHUTDOWN in GUI applications
+    try:
+        import ctypes
+        from ctypes import wintypes
+        global _ctrl_handler
+        
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
+        def ctrl_handler(ctrl_type):
+            # 2 = CTRL_CLOSE_EVENT, 5 = CTRL_LOGOFF_EVENT, 6 = CTRL_SHUTDOWN_EVENT
+            if ctrl_type in (2, 5, 6):
+                on_system_exit(ctrl_type)
+                return False # Allow normal termination to resume immediately
+            return False
+            
+        _ctrl_handler = ctrl_handler
+        ctypes.windll.kernel32.SetConsoleCtrlHandler(_ctrl_handler, True)
     except Exception:
         pass
 
