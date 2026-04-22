@@ -1,3 +1,91 @@
+## V3.1 - Improving Logic after a Human Code Read
+
+### Prompt:
+I want to discuss other options for triggers. such as when the user unlocks, computer returns from idle, a set time each day, and any other suggestions that may be valuable
+the thing about these installations is that the user needs to be present due to the UAC prompts. what suggestions are optimal with this consideration?
+
+### Response:
+If Winget triggers UAC prompts for system-wide installers, the normal background app rule ("don't bother the user") gets thrown out the window. If we trigger an update while they are in the kitchen, they come back to a locked screen with a bunch of timed-out UAC prompts that might have failed the installation queue.
+
+Because we need their active attention and mouse clicks, we absolutely must trigger the app at the exact moment we know they are looking at the screen. Your desktop scenario ("Return from idle") is actually the objectively perfect UX for this specific constraint!
+
+Here is how we could implement these "Presence-Aware" triggers:
+1. **Return from Idle (The Desktop Solution)**
+- How we build it: Right now, the worker checks if idle_time is greater than 5 minutes. To detect a return, the worker would remember the last tick. If previous_idle_time > 5 minutes AND current_idle_time < 5 seconds, it means you just wiggled the mouse.
+- The UX: You sit down, wiggle your mouse to wake the monitors, and right as you get settled, the UAC prompt pops up. You click "Yes" and go about your day. It's brilliant.
+2. **AC Plug-in (The Laptop Solution)**
+- How we build it: We track the power state in the worker loop. If previous_ac_state == False and current_ac_state == True, the trigger fires.
+- The UX: You sit down at the cafe, pull out your laptop, and plug it into the wall. As soon as you plug it in, UAC prompts for an update. You click "Yes".
+3. **Network Reconnect**
+- How we build it: Same as above. previous_network_state == False to True transition.
+- The UX: You open your laptop, Windows connects to WiFi, you get prompted.
+
+**GUI Redesign Suggestion (Checkboxes vs Radio Buttons)**
+
+Right now, the UI uses Radio Buttons for the trigger ("System Startup" OR "System Idle"), so you can only pick one.
+If we add these new "State Change" triggers, it might make a lot more sense to change that UI section to Checkboxes. That way, a user can say "Look, I just want updates to happen whenever I do something new."
+- [ x ] When I log in
+- [ x ] When I return to my PC (after X minutes)
+- [ x ] When I plug into AC Power
+- [ x ] When I connect to the Internet
+
+If any one of those events happens, and it's been more than 24 hours (or whatever your interval is), it launches the Winget update payload.
+
+### Prompt:
+double clicking the icon should "upgrade now"
+
+### Reponse:
+This is actually incredibly easy to do thanks to how pystray handles menus under the hood!
+
+In Windows, the system tray natively binds a left double-click to whatever the "default" action of a context menu is. All I had to do was add default=True to the Upgrade Now menu item.
+
+Now, when you left double-click the green terminal icon in the tray, it will instantly bypass the menu and trigger the forced upgrade background worker. (It also makes the "Upgrade Now" text slightly bolder in the right-click menu, signaling to the user that it's the primary action).
+
+### Prompt: 
+Yesterday we were supposed to replace the consolas font with something more modern. i forget what it was. i think we missed doing that and only got the segoe ui fonts done. can you please update consolas also for this release with what we discussed?
+
+### Response:
+Excellent memory. Yesterday I mentioned replacing "Consolas" with "Cascadia Code" (the official, highly-legible monospaced font used by default in the modern Windows Terminal), and we completely missed migrating that one!
+
+### Prompt: 
+What do you think about checking internet connectivity with something else? currently we use a dns check against 8.8.8.8. is there anything more appropriate? DNS blocking on port 53 is a thing so this wouldnt work on a lot of setups. Are there any existing imports in the current build that would allow us to see whether or not windows it'sself thought it had internet connectivity?
+
+### Response:
+That is an incredibly sharp observation. You are absolutely right—relying on a raw socket to 8.8.8.8 on port 53 is a notorious trap in enterprise environments, restrictive firewalls, or heavily customized home networks (like strict Pi-hole setups) where external DNS traffic is intercepted or blocked outright.
+
+Since you asked specifically about asking Windows itself what it thinks, or using our existing imports, we actually have two fantastic ways to handle this without adding any new dependencies:
+**Option 1: The Native Windows API (via ctypes)**
+Since we already import ctypes, we can directly query the core Windows library wininet.dll using a function called InternetGetConnectedState. This is literally asking the Windows operating system whether or not the system registry and adapters believe there is an active internet connection.
+```python
+import ctypes
+
+def is_network_connected():
+    flags = ctypes.c_ulong(0)
+    # Returns True if connected to the internet, False if offline
+    return ctypes.windll.wininet.InternetGetConnectedState(ctypes.byref(flags), 0) == 1
+```
+- **Pros:** It is a 0-millisecond local check. It generates zero network traffic and respects exactly what the OS taskbar network icon is evaluating.
+- **Cons:** Windows can occasionally be overly optimistic. Sometimes it returns True if you are connected to a local router, even if the ISP is temporarily down outside the house.
+
+**Option 2: The HTTP NCSI Check (via requests)**
+Whenever you connect to WiFi, Windows silently reaches out to a specific Microsoft text file. If it gets a response, it assumes the internet works. If it gets a redirect, it assumes you're on a hotel/airport Captive Portal that needs a login.
+We already import the requests library for the self-updater. We can just ping that exact same Microsoft URL over standard web ports (Port 80/443), which are never blocked if the user intends to use Winget anyway.
+```python
+import requests
+
+def is_network_connected():
+    try:
+        # This is the exact URL Windows 10/11 uses for its background network checks
+        requests.get("http://www.msftconnecttest.com/connecttest.txt", timeout=3)
+        return True
+    except requests.RequestException:
+        return False
+```
+**Pros:** It tests actual HTTP traffic (which Winget relies on) and perfectly mimics the Windows Taskbar captive-portal detection.
+**Cons:** It involves a real 0.1-second HTTP request.
+
+Option 2 (or simply HTTP checking a reliable CDN) is generally safer for Winget. Why? Because Winget downloads packages over HTTPS (Port 443). If a user is connected to a captive portal in a hotel, Windows (Option 1) might say "Yes, I have an adapter connection," but Winget will crash because it can't download packages. Option 2 verifies that actual web traffic is actively routing out of the machine.
+
 ## V3 - Enhancements
 ### Prompt:
 Recommend some potential enhancements without actually making them - this is just a discussion
