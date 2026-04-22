@@ -27,7 +27,7 @@ import webbrowser
 import socket
 import re
 
-APP_VERSION = "2026.04.22.06"
+APP_VERSION = "2026.04.22.07"
 
 try:
     import pystray
@@ -123,8 +123,17 @@ def register_exit_hooks():
             WNDPROC = ctypes.WINFUNCTYPE(ctypes.c_long, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
             
             def wndproc(hwnd, msg, wparam, lparam):
-                if msg == 0x0011: # WM_QUERYENDSESSION
-                    on_system_exit(msg)
+                if msg == 0x0011 or msg == 0x0016: # WM_QUERYENDSESSION or WM_ENDSESSION
+                    try:
+                        on_system_exit(msg)
+                    except Exception:
+                        pass
+                    finally:
+                        if hasattr(user32, 'ShutdownBlockReasonDestroy'):
+                            try:
+                                user32.ShutdownBlockReasonDestroy(hwnd)
+                            except Exception:
+                                pass
                     return 1 # Return TRUE to allow Windows to shut down
                 return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
                 
@@ -137,11 +146,19 @@ def register_exit_hooks():
             wndclass.hInstance = ctypes.windll.kernel32.GetModuleHandleW(None)
             
             user32.RegisterClassW(ctypes.byref(wndclass))
-            # Create a message-only window (HWND_MESSAGE = -3, but 0 is fine for this context)
+            # Create a message-only window
             hwnd = user32.CreateWindowExW(0, "WMShutdownListener", "ShutdownListener", 0, 0, 0, 0, 0, 0, 0, wndclass.hInstance, 0)
             
+            if hwnd and hasattr(user32, 'ShutdownBlockReasonCreate'):
+                try:
+                    user32.ShutdownBlockReasonCreate.argtypes = [wintypes.HWND, wintypes.LPCWSTR]
+                    user32.ShutdownBlockReasonCreate(hwnd, ctypes.c_wchar_p("Writing logs & cleaning PID before system shutdown..."))
+                except Exception:
+                    pass
+
             msg_struct = wintypes.MSG()
-            while user32.GetMessageW(ctypes.byref(msg_struct), hwnd, 0, 0) > 0:
+            # Pass 0 (NULL) to GetMessageW to process all thread-level broadcasts
+            while user32.GetMessageW(ctypes.byref(msg_struct), 0, 0, 0) > 0:
                 user32.TranslateMessage(ctypes.byref(msg_struct))
                 user32.DispatchMessageW(ctypes.byref(msg_struct))
 
