@@ -79,12 +79,19 @@ def cleanup_pid():
 
 def on_system_exit(*args):
     """Logs termination when the OS reboots or shuts down the background process."""
+    global is_graceful_exit
     # Only clean up PID from the main tray process, not UI subprocesses
     if not any(arg in sys.argv for arg in ['--settings', '--logs', '--about']):
         cleanup_pid()
         
     if not is_graceful_exit:
+        is_graceful_exit = True
         logging.info("Application is shutting down or terminating (System exit/reboot).")
+        try:
+            for handler in logger.handlers:
+                handler.flush()
+        except:
+            pass
         logging.shutdown()
 
 def register_exit_hooks():
