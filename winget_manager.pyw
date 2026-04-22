@@ -27,7 +27,7 @@ import webbrowser
 import socket
 import re
 
-APP_VERSION = "2026.04.22.00"
+APP_VERSION = "2026.04.22.01"
 
 try:
     import pystray
@@ -375,13 +375,30 @@ class WorkerThread(threading.Thread):
 
     def run(self):
         logging.info("Background worker thread started.")
+        
+        # Initialize previous states for transition-based triggers
+        prev_idle_sec = get_idle_time_seconds()
+        prev_ac_state = is_on_ac_power()
+        prev_net_state = is_network_connected()
+        startup_handled = False
+
         while self.running:
             config = load_config()
             now = time.time()
-            interval_seconds = config['interval_days'] * 86400
-            last_run = config['last_run']
-            trigger = config['trigger']
-            idle_minutes = config['idle_minutes']
+            interval_seconds = config.get('interval_days', 1) * 86400
+            last_run = config.get('last_run', 0)
+            idle_minutes = config.get('idle_minutes', 5)
+
+            # UI/Config Triggers (with clean defaults)
+            trigger_login = config.get('trigger_login', True)
+            trigger_idle = config.get('trigger_return_from_idle', False)
+            trigger_ac = config.get('trigger_ac_plugin', False)
+            trigger_net = config.get('trigger_network_reconnect', False)
+
+            # Get current states
+            curr_idle_sec = get_idle_time_seconds()
+            curr_ac_state = is_on_ac_power()
+            curr_net_state = is_network_connected()
 
             # Has enough time passed since the last upgrade?
             time_for_update = (now - last_run) >= interval_seconds
@@ -392,21 +409,25 @@ class WorkerThread(threading.Thread):
                 should_upgrade = True
                 self.force_run = False # Reset flag
             elif time_for_update:
-                if trigger == 'login':
-                    logging.info("Interval met. Trigger: Login. Executing upgrade.")
+                if trigger_login and not startup_handled:
+                    logging.info("Interval met. Trigger: System Startup. Executing upgrade.")
                     should_upgrade = True
-                elif trigger == 'idle':
-                    idle_time = get_idle_time_seconds()
-                    if idle_time >= (idle_minutes * 60):
-                        logging.info(f"Interval met. Trigger: Idle ({idle_minutes} min). Executing upgrade.")
-                        should_upgrade = True
+                elif trigger_idle and prev_idle_sec >= (idle_minutes * 60) and curr_idle_sec <= 65:
+                    logging.info(f"Interval met. Trigger: Return from Idle ({idle_minutes} min). Executing upgrade.")
+                    should_upgrade = True
+                elif trigger_ac and not prev_ac_state and curr_ac_state:
+                    logging.info("Interval met. Trigger: AC Power Plugged In. Executing upgrade.")
+                    should_upgrade = True
+                elif trigger_net and not prev_net_state and curr_net_state:
+                    logging.info("Interval met. Trigger: Network Reconnected. Executing upgrade.")
+                    should_upgrade = True
 
             # Evaluate system readiness inhibitors
             if should_upgrade:
-                if config.get("require_ac_power", False) and not is_on_ac_power():
+                if config.get("require_ac_power", False) and not curr_ac_state:
                     logging.info("Upgrade postponed: System is currently on battery power.")
                     should_upgrade = False
-                elif config.get("require_network", True) and not is_network_connected():
+                elif config.get("require_network", True) and not curr_net_state:
                     logging.info("Upgrade postponed: System has no active internet connection.")
                     should_upgrade = False
 
@@ -421,6 +442,12 @@ class WorkerThread(threading.Thread):
                     
                 config['last_run'] = time.time()
                 save_config(config)
+
+            # Update previous states at the end of the loop tick
+            prev_idle_sec = curr_idle_sec
+            prev_ac_state = curr_ac_state
+            prev_net_state = curr_net_state
+            startup_handled = True
 
             # Check self-updater
             updater_freq = config.get("updater_frequency_days", 7)
@@ -560,8 +587,11 @@ def run_settings_gui():
     # Dynamic UI Variables mapping using same keys as JSON
     ui_vars = {
         'interval_days': ctk.StringVar(value=str(config.get('interval_days', 1))),
-        'trigger': ctk.StringVar(value=config.get('trigger', 'idle')),
+        'trigger_login': ctk.BooleanVar(value=config.get('trigger_login', True)),
+        'trigger_return_from_idle': ctk.BooleanVar(value=config.get('trigger_return_from_idle', False)),
         'idle_minutes': ctk.StringVar(value=str(config.get('idle_minutes', 5))),
+        'trigger_ac_plugin': ctk.BooleanVar(value=config.get('trigger_ac_plugin', False)),
+        'trigger_network_reconnect': ctk.BooleanVar(value=config.get('trigger_network_reconnect', False)),
         'require_ac_power': ctk.BooleanVar(value=config.get('require_ac_power', False)),
         'require_network': ctk.BooleanVar(value=config.get('require_network', True)),
         'updater_frequency_days': ctk.StringVar(value=str(config.get('updater_frequency_days', 7))),
@@ -576,12 +606,15 @@ def run_settings_gui():
     ctk.CTkLabel(tab_sched, text="Check Interval (Days):", font=fnt).grid(row=0, column=0, sticky="w", pady=5)
     ctk.CTkEntry(tab_sched, textvariable=ui_vars['interval_days'], width=80, font=fnt).grid(row=0, column=1, sticky="w", pady=5, padx=10)
     
-    ctk.CTkLabel(tab_sched, text="Trigger upgrade upon:", font=fnt).grid(row=1, column=0, sticky="w", pady=(15, 0))
-    ctk.CTkRadioButton(tab_sched, text="System Startup", variable=ui_vars['trigger'], value="login", font=fnt).grid(row=2, column=0, columnspan=2, sticky="w", pady=(5, 5))
-    ctk.CTkRadioButton(tab_sched, text="System Idle", variable=ui_vars['trigger'], value="idle", font=fnt).grid(row=3, column=0, columnspan=2, sticky="w", pady=(5, 5))
+    ctk.CTkLabel(tab_sched, text="Triggers (When to run updates):", font=fnt_b).grid(row=1, column=0, columnspan=2, sticky="w", pady=(15, 5))
+    ctk.CTkCheckBox(tab_sched, text="When I sign into the computer", variable=ui_vars['trigger_login'], font=fnt).grid(row=2, column=0, columnspan=2, sticky="w", pady=(5, 5))
+    ctk.CTkCheckBox(tab_sched, text="When I return from being idle", variable=ui_vars['trigger_return_from_idle'], font=fnt).grid(row=3, column=0, columnspan=2, sticky="w", pady=(5, 5))
 
-    ctk.CTkLabel(tab_sched, text="Idle time required (Mins):", font=fnt).grid(row=4, column=0, sticky="w", pady=(15, 5))
-    ctk.CTkEntry(tab_sched, textvariable=ui_vars['idle_minutes'], width=80, font=fnt).grid(row=4, column=1, sticky="w", pady=(15, 5), padx=10)
+    ctk.CTkLabel(tab_sched, text="  ↳ After this many idle minutes:", font=fnt_s, text_color="gray").grid(row=4, column=0, sticky="w", pady=0)
+    ctk.CTkEntry(tab_sched, textvariable=ui_vars['idle_minutes'], width=60, font=fnt).grid(row=4, column=1, sticky="w", pady=0, padx=10)
+
+    ctk.CTkCheckBox(tab_sched, text="When I plug into AC Power", variable=ui_vars['trigger_ac_plugin'], font=fnt).grid(row=5, column=0, columnspan=2, sticky="w", pady=(15, 5))
+    ctk.CTkCheckBox(tab_sched, text="When I connect to the Internet", variable=ui_vars['trigger_network_reconnect'], font=fnt).grid(row=6, column=0, columnspan=2, sticky="w", pady=(5, 5))
 
     # --- Conditions Tab ---
     ctk.CTkLabel(tab_conds, text="Upgrade Restrictions", font=fnt_b).pack(anchor="w", pady=(5, 10))
@@ -753,7 +786,7 @@ def run_tray_app():
             worker.trigger_force_run()
 
     menu = pystray.Menu(
-        item('Upgrade Now', on_upgrade_now),
+        item('Upgrade Now', on_upgrade_now, default=True),
         pystray.Menu.SEPARATOR,
         item('Settings', lambda i, it: launch_gui_process('--settings')),
         item('View Logs', lambda i, it: launch_gui_process('--logs')),
