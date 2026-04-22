@@ -27,7 +27,7 @@ import webbrowser
 import socket
 import re
 
-APP_VERSION = "2026.04.22.03"
+APP_VERSION = "2026.04.22.06"
 
 try:
     import pystray
@@ -97,22 +97,55 @@ def register_exit_hooks():
     except Exception:
         pass
 
-    # Microsoft allows SetConsoleCtrlHandler to catch LOGOFF/SHUTDOWN in GUI applications
+    # Since pythonw.exe has no console, SetConsoleCtrlHandler is ignored during shutdown.
+    # We must create a hidden message-only window to catch WM_QUERYENDSESSION (0x0011).
     try:
         import ctypes
         from ctypes import wintypes
-        global _ctrl_handler
+        import threading
         
-        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
-        def ctrl_handler(ctrl_type):
-            # 2 = CTRL_CLOSE_EVENT, 5 = CTRL_LOGOFF_EVENT, 6 = CTRL_SHUTDOWN_EVENT
-            if ctrl_type in (2, 5, 6):
-                on_system_exit(ctrl_type)
-                return False # Allow normal termination to resume immediately
-            return False
+        class WNDCLASSW(ctypes.Structure):
+            _fields_ = [
+                ("style", wintypes.UINT),
+                ("lpfnWndProc", ctypes.c_void_p),
+                ("cbClsExtra", ctypes.c_int),
+                ("cbWndExtra", ctypes.c_int),
+                ("hInstance", wintypes.HINSTANCE),
+                ("hIcon", wintypes.HICON),
+                ("hCursor", wintypes.HANDLE),
+                ("hbrBackground", wintypes.HBRUSH),
+                ("lpszMenuName", wintypes.LPCWSTR),
+                ("lpszClassName", wintypes.LPCWSTR)
+            ]
             
-        _ctrl_handler = ctrl_handler
-        ctypes.windll.kernel32.SetConsoleCtrlHandler(_ctrl_handler, True)
+        def shutdown_listener_thread():
+            user32 = ctypes.windll.user32
+            WNDPROC = ctypes.WINFUNCTYPE(ctypes.c_long, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+            
+            def wndproc(hwnd, msg, wparam, lparam):
+                if msg == 0x0011: # WM_QUERYENDSESSION
+                    on_system_exit(msg)
+                    return 1 # Return TRUE to allow Windows to shut down
+                return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
+                
+            global _wndproc_cb_ref
+            _wndproc_cb_ref = WNDPROC(wndproc)
+            
+            wndclass = WNDCLASSW()
+            wndclass.lpfnWndProc = ctypes.cast(_wndproc_cb_ref, ctypes.c_void_p)
+            wndclass.lpszClassName = "WMShutdownListener"
+            wndclass.hInstance = ctypes.windll.kernel32.GetModuleHandleW(None)
+            
+            user32.RegisterClassW(ctypes.byref(wndclass))
+            # Create a message-only window (HWND_MESSAGE = -3, but 0 is fine for this context)
+            hwnd = user32.CreateWindowExW(0, "WMShutdownListener", "ShutdownListener", 0, 0, 0, 0, 0, 0, 0, wndclass.hInstance, 0)
+            
+            msg_struct = wintypes.MSG()
+            while user32.GetMessageW(ctypes.byref(msg_struct), hwnd, 0, 0) > 0:
+                user32.TranslateMessage(ctypes.byref(msg_struct))
+                user32.DispatchMessageW(ctypes.byref(msg_struct))
+
+        threading.Thread(target=shutdown_listener_thread, daemon=True).start()
     except Exception:
         pass
 
