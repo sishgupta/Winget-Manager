@@ -27,7 +27,7 @@ import webbrowser
 import socket
 import re
 
-APP_VERSION = "2026.04.22.07"
+APP_VERSION = "2026.04.22.08"
 
 try:
     import pystray
@@ -769,7 +769,7 @@ def run_settings_gui():
 
 def run_about_gui():
     """A CustomTkinter GUI to show the About box."""
-    root = create_base_window("About Winget Manager", 400, 550)
+    root = create_base_window("About Winget Manager", 400, 650)
 
     frame = ctk.CTkFrame(root, fg_color="transparent")
     frame.pack(fill="both", expand=True, padx=40, pady=30)
@@ -823,7 +823,7 @@ def run_about_gui():
     pkg_link.pack()
     pkg_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://packaging.pypa.io/"))
 
-    ctk.CTkButton(frame, text="Close", font=fnt, command=root.destroy, width=120).pack(pady=(35, 0))
+    ctk.CTkButton(frame, text="Close", font=fnt_b, command=root.destroy, width=150, height=36).pack(pady=(25, 0))
 
     root.mainloop()
 
