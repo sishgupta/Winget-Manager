@@ -767,7 +767,6 @@ def run_settings_gui():
             set_autostart(autostart_var.get())
             
             logging.info("Settings saved by user via Settings UI.")
-            messagebox.showinfo("Saved", "Settings saved successfully!\nCheck intervals will take effect immediately.")
             root.destroy()
         except ValueError:
             messagebox.showerror("Error", "Please enter valid numeric values for numeric fields.")
