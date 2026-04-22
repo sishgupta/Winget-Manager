@@ -27,7 +27,7 @@ import webbrowser
 import socket
 import re
 
-APP_VERSION = "2026.04.21.07"
+APP_VERSION = "2026.04.22.00"
 
 try:
     import pystray
@@ -202,13 +202,12 @@ def is_on_ac_power():
     return True
 
 def is_network_connected():
-    """Quick check for active internet connection using a DNS resolution attempt."""
+    """Check for active internet using the Microsoft NCSI payload over HTTP."""
     try:
-        socket.create_connection(("8.8.8.8", 53), timeout=3)
+        requests.get("http://www.msftconnecttest.com/connecttest.txt", timeout=3)
         return True
-    except OSError:
-        pass
-    return False
+    except requests.RequestException:
+        return False
 
 def hide_console():
     """
@@ -498,7 +497,7 @@ def run_logs_gui():
     btn_frame = ctk.CTkFrame(root, fg_color="transparent")
     btn_frame.pack(side="bottom", pady=10)
     
-    text_area = ctk.CTkTextbox(root, wrap="word", font=("Consolas", 12))
+    text_area = ctk.CTkTextbox(root, wrap="word", font=("Cascadia Code", 12))
     text_area.pack(fill="both", expand=True, padx=10, pady=(10, 0))
 
     last_pos = 0
