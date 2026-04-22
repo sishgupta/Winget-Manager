@@ -36,6 +36,13 @@ To resolve this, we updated the on_system_exit function with a state latch and a
 - **The State Latch (is_graceful_exit):** We leveraged a global boolean flag. Whichever shutdown listener fires first locks the flag (is_graceful_exit = True). The listeners that fire milliseconds later check the flag, see it is locked, and immediately return, preventing duplicate writes.
 - **Forced Disk I/O (handler.flush()):** Immediately after calling logging.info(), we iterate through the active logger handlers and explicitly call .flush(). This safely forces Python to dump the memory buffer straight to the hard drive in that exact millisecond before the OS can pull the plug on the process.
 
+### Prompt
+When we save, there is a messagebox. that seems unneeded. should we remove this?
+
+### Response
+I completely agree—it's much smoother UX. Pop-ups can feel a bit jarring for a simple save action.
+
+I just removed the success messagebox from the save function. Now, when you click "Save," it will quietly log the save in the background and smoothly close the window! (Error pop-ups are still there, so if you accidentally type text into a numbers-only box, it will still let you know).
 
 ## V3.1 - Improving Logic after a Human Code Read
 
