@@ -1,5 +1,5 @@
 # Winget-Manager
-Gemini 3.1 Pro Vibe coded Winget manager
+Gemini 3.1 Pro Vibe coded Winget Manager written in Python
 
 ![System Tray Menu](screenshots/System%20Tray%20Menu.png)
 
