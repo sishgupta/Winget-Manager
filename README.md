@@ -30,7 +30,7 @@ A log provides maximum transprarency for the actions of the tool.
 * **Behavioral Triggers:** Tell the app to logically start upgrading based on your actions:
   * **Return from Idle:** *(Perfect for desktops)* Triggers immediately when you return to your computer after a set time away.
   * **AC Power Plug-in:** *(Perfect for laptops)* Triggers the moment you plug your laptop into the wall.
-  * **Network Reconnect:** Triggers as soon as you connect to a new Wi-Fi network.
+  * **Network Reconnect:** Triggers as soon as network connectivity resumes.
   * **System Startup:** Triggers shortly after you log into Windows.
 * **Check Interval:** Set how many days to wait before looking for updates again.
 
