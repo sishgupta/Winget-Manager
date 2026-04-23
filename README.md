@@ -1,7 +1,7 @@
 # Winget-Manager
 Gemini 3.1 Pro Vibe coded Winget Manager written in Python
 
-The purpose of the application is to be an extremely lightweight and extremely readable and maintainable script that automatically executes a winget upgrade --all at a time when the user is present to accept UAC prompts but still convenient or as unobtrusive to the user as possible.
+The purpose of the application is to be an extremely lightweight and extremely readable and maintainable script that automatically executes a ```winget upgrade --all``` at a time when the user is present to accept UAC prompts but still convenient or as unobtrusive to the user as possible.
 
 A log provides maximum transprarency for the actions of the tool.
 
