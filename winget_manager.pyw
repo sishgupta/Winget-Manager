@@ -14,6 +14,7 @@ import os
 import sys
 import time
 import json
+import tempfile
 import threading
 import subprocess
 import ctypes
@@ -27,7 +28,7 @@ import webbrowser
 import socket
 import re
 
-APP_VERSION = "2026.04.29.02"
+APP_VERSION = "2026.04.29.03"
 
 try:
     import pystray
@@ -344,6 +345,17 @@ def get_idle_time_seconds():
         return millis / 1000.0
     return 0
 
+def get_toast_icon_path(state):
+    try:
+        path = os.path.join(tempfile.gettempdir(), f".winget_manager_toast_icon_{state}.png")
+        if not os.path.exists(path):
+            img = create_image(256, state)
+            img.save(path)
+        return os.path.abspath(path)
+    except Exception as e:
+        logging.error(f"Failed to generate toast icon: {e}")
+        return None
+
 def notify_and_log(icon, message, title, level="info"):
     """
     Helper function to simultaneously write a message to the local .log file 
@@ -351,11 +363,17 @@ def notify_and_log(icon, message, title, level="info"):
     """
     if level == "error":
         logging.error(message)
+        state = "error"
     else:
         logging.info(message)
+        state = "normal"
         
     try:
-        toast(title, message, app_id="Winget Manager")
+        icon_path = get_toast_icon_path(state)
+        if icon_path:
+            toast(title, message, app_id="Winget Manager", icon=icon_path)
+        else:
+            toast(title, message, app_id="Winget Manager")
     except Exception as e:
         logging.error(f"win11toast failed: {e}. Falling back to standard notification.")
         if icon:
