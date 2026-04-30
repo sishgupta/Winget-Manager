@@ -27,7 +27,7 @@ import webbrowser
 import socket
 import re
 
-APP_VERSION = "2026.04.22.11"
+APP_VERSION = "2026.04.30.02"
 
 try:
     import pystray
@@ -36,12 +36,40 @@ try:
     import customtkinter as ctk
     import requests
     from packaging import version
+    from win11toast import toast
 except ImportError:
-    # If modules are missing, we still try to show a basic Tkinter error box
+    import subprocess
+    import sys
+    import tkinter as tk
+    from tkinter import messagebox
+    
     root = tk.Tk()
     root.withdraw()
-    tk.messagebox.showerror("Missing Libraries", "Required libraries not found.\nPlease run: pip install pystray Pillow customtkinter requests packaging")
-    sys.exit(1)
+    
+    if messagebox.askyesno("Missing Libraries", "Winget Manager is missing required Python libraries.\n\nWould you like to automatically install them now using pip?"):
+        try:
+            install_win = tk.Toplevel(root)
+            install_win.title("Installing...")
+            install_win.geometry("350x120")
+            tk.Label(install_win, text="Installing required libraries...\nPlease wait, this may take a minute or two.", padx=20, pady=30).pack()
+            install_win.update()
+            
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", 
+                "pystray", "Pillow", "customtkinter", "requests", "packaging", "win11toast"
+            ])
+            
+            install_win.destroy()
+            
+            subprocess.Popen([sys.executable] + sys.argv)
+            sys.exit(0)
+        except Exception as e:
+            if 'install_win' in locals() and install_win.winfo_exists():
+                install_win.destroy()
+            messagebox.showerror("Installation Failed", f"Failed to install libraries. Please run manually:\n\npip install pystray Pillow customtkinter requests packaging win11toast\n\nError: {e}")
+            sys.exit(1)
+    else:
+        sys.exit(1)
 
 # --- Paths & Logging Setup ---
 USER_DIR = os.path.expanduser("~")
@@ -326,8 +354,12 @@ def notify_and_log(icon, message, title, level="info"):
     else:
         logging.info(message)
         
-    if icon:
-        icon.notify(message, title)
+    try:
+        toast(title, message, app_id="Winget Manager")
+    except Exception as e:
+        logging.error(f"win11toast failed: {e}. Falling back to standard notification.")
+        if icon:
+            icon.notify(message, title)
 
 def run_winget_upgrade(icon=None):
     """
@@ -571,13 +603,6 @@ def set_tk_icon(window):
 
 def create_base_window(title, width, height, resizable=False):
     """Creates and centers a CustomTkinter window."""
-    # Force Windows Taskbar to use our injected window icon instead of default Python logo
-    if sys.platform == "win32":
-        try:
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("wingetmanager.gui.1")
-        except Exception:
-            pass
-
     ctk.set_appearance_mode("System")
     ctk.set_default_color_theme("blue")
     root = ctk.CTk()
@@ -890,6 +915,13 @@ def run_tray_app():
     icon.run(setup=on_setup)
 
 if __name__ == '__main__':
+    if sys.platform == 'win32':
+        try:
+            # Setting AUMID globally allows proper taskbar icon grouping and can affect notification sender name
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("WingetManager")
+        except Exception:
+            pass
+            
     if '--settings' in sys.argv:
         hide_console()
         run_settings_gui()
