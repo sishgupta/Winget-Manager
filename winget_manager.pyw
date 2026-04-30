@@ -27,7 +27,7 @@ import webbrowser
 import socket
 import re
 
-APP_VERSION = "2026.04.30.02"
+APP_VERSION = "2026.04.29.02"
 
 try:
     import pystray
